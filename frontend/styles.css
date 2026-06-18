@@ -1,0 +1,8 @@
+/* LightMatter styles
+   The look and feel of the site lives here. Empty for now —
+   we'll add real styling once the page has content to style. */
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 2rem;
+}

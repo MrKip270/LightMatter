@@ -1,0 +1,19 @@
+# --- Node ---
+# Downloaded dependencies. These are huge and can always be reinstalled
+# from package.json, so we never commit them.
+node_modules/
+
+# --- Secrets ---
+# Environment files hold API keys and passwords. NEVER commit these.
+.env
+.env.local
+*.local
+
+# --- Logs ---
+*.log
+npm-debug.log*
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/

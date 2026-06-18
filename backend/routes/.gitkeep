@@ -1,0 +1,4 @@
+# This file exists only to keep the empty "routes/" folder in Git.
+# Git does not track empty directories, so a placeholder file is the
+# standard trick. Once we add real route files (clouds.js, aurora.js, etc.)
+# you can delete this.
