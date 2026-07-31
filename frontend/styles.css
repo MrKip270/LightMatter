@@ -6,3 +6,38 @@ body {
   font-family: system-ui, sans-serif;
   margin: 2rem;
 }
+
+/* Autocomplete dropdown (functional styling; full theme comes later). */
+.input-wrap {
+  position: relative;      /* anchor the dropdown to this box */
+  display: inline-block;
+}
+
+.suggestions {
+  position: absolute;      /* float over the page, below the input */
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.suggestions li {
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.suggestions li:hover {
+  background: #eee;
+}
+
+.suggestions[hidden] {
+  display: none;
+}

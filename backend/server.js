@@ -6,8 +6,8 @@ const express = require("express");
 // 2. Bring in Node's built-in "path" module for building safe file paths.
 const path = require("path");
 
-// 3. Bring in our aurora route module (the router we built in routes/).
-//    "./routes/aurora" is relative to THIS file (backend/).
+// 3. Bring in our route modules (each data source / helper is its own file).
+const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
 
 // 4. Create the Express application.
@@ -16,9 +16,11 @@ const app = express();
 // 5. Pick a port (use the environment's PORT if set, else 3000).
 const PORT = process.env.PORT || 3000;
 
-// 6. Mount our API routes. Any request starting with "/api/aurora" is
-//    handed to the aurora router. As we add more data sources, they line
-//    up here: "/api/clouds", "/api/satellites", etc.
+// 6. Mount our API routes. Requests are matched top-to-bottom.
+//    /api/geocode -> turn a place name into coordinates
+//    /api/aurora  -> aurora probability for coordinates
+//    Future sources (clouds, satellites) line up here the same way.
+app.use("/api/geocode", geocodeRoute);
 app.use("/api/aurora", auroraRoute);
 
 // 7. Serve the frontend folder as static files. Anything not matched by an
