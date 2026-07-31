@@ -9,6 +9,7 @@ const path = require("path");
 // 3. Bring in our route modules (each data source / helper is its own file).
 const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
+const cloudsRoute = require("./routes/clouds");
 
 // 4. Create the Express application.
 const app = express();
@@ -19,9 +20,11 @@ const PORT = process.env.PORT || 3000;
 // 6. Mount our API routes. Requests are matched top-to-bottom.
 //    /api/geocode -> turn a place name into coordinates
 //    /api/aurora  -> aurora probability for coordinates
-//    Future sources (clouds, satellites) line up here the same way.
+//    /api/clouds  -> tonight's cloud cover for coordinates
+//    Future sources (light pollution, satellites) line up here the same way.
 app.use("/api/geocode", geocodeRoute);
 app.use("/api/aurora", auroraRoute);
+app.use("/api/clouds", cloudsRoute);
 
 // 7. Serve the frontend folder as static files. Anything not matched by an
 //    API route above falls through to here (e.g. "/" -> index.html).
