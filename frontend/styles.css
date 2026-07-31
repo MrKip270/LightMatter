@@ -41,3 +41,46 @@ body {
 .suggestions[hidden] {
   display: none;
 }
+
+/* Result cards — one per data source. Functional only; the real theme comes
+   after all the sources exist (see the PRD: build the machine, then style it). */
+.results {
+  margin-top: 1.5rem;
+  max-width: 34rem;
+}
+
+.card {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+}
+
+/* A source that couldn't report. Visually recessed so a single outage reads as
+   "this one section is missing", not "the page is broken". */
+.card.unavailable {
+  border-style: dashed;
+  background: #fafafa;
+}
+
+.verdict {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.detail {
+  margin: 0.15rem 0;
+  font-size: 0.9rem;
+}
+
+.muted {
+  color: #777;
+}

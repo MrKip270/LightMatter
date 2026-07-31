@@ -61,46 +61,156 @@ function handleSearch(text) {
   const coords = parseCoordinates(text);
   if (coords) {
     // Coordinates given directly — skip geocoding entirely.
-    showAuroraForCoords(coords.lat, coords.lon, `(${coords.lat}, ${coords.lon})`);
+    showSkyReportForCoords(coords.lat, coords.lon, `(${coords.lat}, ${coords.lon})`);
   } else {
     // Otherwise treat it as a place name.
     searchByName(text);
   }
 }
 
-// --- 3. The shared final step: given coordinates, fetch + show aurora. ---
-async function showAuroraForCoords(lat, lon, label) {
+// --- 3. The shared final step: given coordinates, fetch + show every source. ---
+
+// Escape text before putting it in HTML. Place names come from an external API
+// and from what the user typed, so treating them as trusted markup would be an
+// injection hole. Setting .textContent on a throwaway element makes the browser
+// do the escaping for us, correctly, instead of us hand-rolling replacements.
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
+// "2026-07-31T20:00" -> "8 PM"
+// Note we slice the string rather than build a Date, for exactly the reason the
+// backend does: these timestamps are LOCAL TO THE SEARCHED LOCATION. Handing
+// one to new Date() makes the browser reinterpret it in the *viewer's* timezone,
+// so a Chicago sunset would display shifted for a user sitting in London.
+function formatHour(localIso) {
+  const hour = Number(localIso.slice(11, 13));
+  const suffix = hour < 12 ? "AM" : "PM";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12} ${suffix}`;
+}
+
+// Fetch JSON from one of our routes, throwing a useful Error on failure.
+// Our routes reply with { error: "..." } and a non-200 status when they fail.
+async function fetchJson(url) {
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed");
+  }
+  return data;
+}
+
+// A consistent "this source didn't work" block, so every section degrades the
+// same way. The PRD requires one dead source not to break the page.
+function unavailableCard(title, reason) {
+  return `
+    <div class="card unavailable">
+      <h3>${escapeHtml(title)}</h3>
+      <p class="detail muted">${escapeHtml(reason)}</p>
+    </div>
+  `;
+}
+
+// Render the cloud section from an allSettled result.
+function renderClouds(settled) {
+  if (settled.status === "rejected") {
+    return unavailableCard("Clouds", `Unavailable — ${settled.reason.message}`);
+  }
+
+  const data = settled.value;
+
+  // The backend distinguishes "the request failed" (a 502, handled above) from
+  // "the request worked but there's nothing to report" (this branch).
+  if (!data.dataAvailable) {
+    return unavailableCard("Clouds", data.visibility);
+  }
+
+  const run = data.bestClearRun;
+  const clearWindowLine = run
+    ? `<p class="detail">Clearest stretch: ${run.hours} hr from ${formatHour(
+        run.start
+      )} to ${formatHour(run.end)}</p>`
+    : `<p class="detail">No clear stretch tonight.</p>`;
+
+  const nightLine = data.night.polarEdgeCase
+    ? `<p class="detail muted">The sun doesn't fully rise or set here today, so this covers the whole day.</p>`
+    : `<p class="detail muted">Night window: ${formatHour(
+        data.night.start
+      )} to ${formatHour(data.night.end)} local time.</p>`;
+
+  return `
+    <div class="card">
+      <h3>Clouds</h3>
+      <p class="verdict"><strong>${escapeHtml(data.verdict)}</strong> — ${escapeHtml(
+    data.visibility
+  )}</p>
+      <p class="detail">Average cover tonight: ${data.averageCloudCover}%</p>
+      ${clearWindowLine}
+      ${nightLine}
+    </div>
+  `;
+}
+
+// Render the aurora section from an allSettled result.
+function renderAurora(settled) {
+  if (settled.status === "rejected") {
+    return unavailableCard("Aurora", `Unavailable — ${settled.reason.message}`);
+  }
+
+  const data = settled.value;
+  const probability = data.auroraProbability;
+
+  return `
+    <div class="card">
+      <h3>Aurora</h3>
+      <p class="verdict"><strong>${verdict(probability)}</strong></p>
+      <p class="detail">Probability: ${probability}%</p>
+      <p class="detail muted">Observed ${new Date(
+        data.observationTime
+      ).toLocaleString()}</p>
+    </div>
+  `;
+}
+
+// Ask every source at once, then render whatever came back.
+async function showSkyReportForCoords(lat, lon, label) {
   setStatus(`Checking the sky for ${label}...`);
   resultsEl.hidden = true;
 
-  try {
-    // Call OUR backend route. fetch() works in the browser just like on
-    // the server. The response is JSON, so we await response.json().
-    const response = await fetch(`/api/aurora?lat=${lat}&lon=${lon}`);
-    const data = await response.json();
+  // Promise.allSettled, NOT Promise.all — this is the important line.
+  //
+  //   Promise.all      rejects the moment ANY promise rejects, discarding the
+  //                    results of the ones that succeeded.
+  //   Promise.allSettled always waits for all of them and hands back a
+  //                    { status, value | reason } for each, whatever happened.
+  //
+  // Promise.all would mean a NOAA outage blanks the cloud forecast too, which is
+  // precisely the failure the PRD's resilience rule forbids. allSettled is how
+  // "each source degrades independently" is actually implemented.
+  //
+  // Both requests are also started BEFORE either is awaited, so they travel in
+  // parallel. Awaiting them one after the other would make the page as slow as
+  // the sum of both APIs instead of the slower of the two.
+  const [auroraResult, cloudsResult] = await Promise.allSettled([
+    fetchJson(`/api/aurora?lat=${lat}&lon=${lon}`),
+    fetchJson(`/api/clouds?lat=${lat}&lon=${lon}`),
+  ]);
 
-    if (!response.ok) {
-      // Our route sends { error: ... } with a non-200 status on failure.
-      throw new Error(data.error || "Something went wrong");
-    }
+  resultsEl.innerHTML = `
+    <h2>${escapeHtml(label)}</h2>
+    ${renderClouds(cloudsResult)}
+    ${renderAurora(auroraResult)}
+  `;
+  resultsEl.hidden = false;
 
-    // Build the results box. Using template literals (backticks) to insert
-    // values into the HTML string.
-    const p = data.auroraProbability;
-    resultsEl.innerHTML = `
-      <h2>${label}</h2>
-      <p class="verdict">Aurora tonight: <strong>${verdict(p)}</strong></p>
-      <p class="detail">Probability: ${p}%</p>
-      <p class="detail">Coordinates: ${data.location.lat}, ${data.location.lon}</p>
-      <p class="detail muted">Data observed ${new Date(
-        data.observationTime
-      ).toLocaleString()}</p>
-    `;
-    resultsEl.hidden = false;
-    setStatus("");
-  } catch (err) {
-    setStatus(`Could not get sky data: ${err.message}`);
-  }
+  // Only shout if EVERY source failed. One failure is already visible inside
+  // its own card, so a page-level error there would be noise.
+  const allFailed =
+    auroraResult.status === "rejected" && cloudsResult.status === "rejected";
+  setStatus(allFailed ? "Could not reach any sky data sources." : "");
 }
 
 // --- 4. Path A: user typed a city name. ---
@@ -133,7 +243,7 @@ async function searchByName(query) {
     const label = [place.name, place.region, place.country]
       .filter(Boolean) // drop any undefined pieces
       .join(", ");
-    showAuroraForCoords(place.lat, place.lon, label);
+    showSkyReportForCoords(place.lat, place.lon, label);
   } catch (err) {
     setStatus(`Lookup failed: ${err.message}`);
   }
@@ -153,7 +263,7 @@ function useMyLocation() {
     // Success: we get the user's coordinates.
     (position) => {
       const { latitude, longitude } = position.coords;
-      showAuroraForCoords(
+      showSkyReportForCoords(
         latitude.toFixed(4),
         longitude.toFixed(4),
         "your location"
@@ -189,7 +299,7 @@ function hideSuggestions() {
 function selectPlace(place, label) {
   placeInput.value = label;
   hideSuggestions();
-  showAuroraForCoords(place.lat, place.lon, label);
+  showSkyReportForCoords(place.lat, place.lon, label);
 }
 
 // Build the dropdown <li> items from a list of places.
