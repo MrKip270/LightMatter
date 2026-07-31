@@ -39,13 +39,25 @@ router.get("/", async (req, res) => {
     // so we default to an empty array. Then we reshape each match into
     // OUR clean, minimal format — the frontend never sees Open-Meteo's
     // 200-field objects, just what we choose to expose.
-    const results = (data.results ?? []).map((place) => ({
+    const allResults = (data.results ?? []).map((place) => ({
       name: place.name,
       region: place.admin1, // state / province (may be undefined)
       country: place.country,
       lat: place.latitude,
       lon: place.longitude,
     }));
+
+    // The geocoder is fuzzy and sometimes returns loosely-related places
+    // (e.g. "Macomb" for "Washington"). Prefer matches whose NAME actually
+    // contains what the user typed. But if that filter removes everything —
+    // which happens when the geocoder matched a local/alternate name we don't
+    // see (e.g. "Tromso" -> "Romssasuolu") — fall back to the full list so
+    // the user still gets a usable result instead of nothing.
+    const needle = query.toLowerCase();
+    const nameMatches = allResults.filter((place) =>
+      place.name.toLowerCase().includes(needle)
+    );
+    const results = nameMatches.length > 0 ? nameMatches : allResults;
 
     res.json({ query, results });
   } catch (err) {
