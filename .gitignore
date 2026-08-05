@@ -13,6 +13,15 @@ node_modules/
 *.log
 npm-debug.log*
 
+# --- Large source datasets ---
+# The raw World Atlas GeoTIFF is 2.9 GB (653 MB zipped). It is an INPUT to
+# tools/build-lightpollution.js, not part of the app. Keep it outside the repo;
+# only the small downsampled grid the tool produces gets committed.
+*.tif
+*.tiff
+World_Atlas*.zip
+data/raw/
+
 # --- OS / editor junk ---
 .DS_Store
 Thumbs.db
