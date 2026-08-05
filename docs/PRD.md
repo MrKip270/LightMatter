@@ -1,7 +1,7 @@
 # LightMatter — Product Requirements Document
 
-Status: Draft v1 (early development)
-Last updated: 2026-06-18
+Status: Draft v2 (early development)
+Last updated: 2026-08-05
 
 ## Problem Statement
 
@@ -49,10 +49,13 @@ the gathering and interpretation.
 ## Implementation Decisions
 
 - **Architecture:** Two clearly separated parts. A **Node.js + JavaScript backend** that calls external APIs and serves combined results, and a **plain HTML/CSS/JavaScript frontend** that the browser loads. React is deferred until fundamentals are solid.
-- **Backend shape:** One route module per data source under `backend/routes/` (e.g. clouds, aurora, severe weather, satellites, sky events). The frontend asks the backend for a location's sky data; the backend fans out to the relevant sources, normalizes their responses, and returns a single combined payload. This keeps each source's logic isolated and independently testable.
+- **Backend shape:** Data logic lives in `backend/sources/` (one module per data source, e.g. `clouds.js`, `aurora.js`, `lightpollution.js`), each exporting a plain function `get<Source>(lat, lon)` that returns a normalized object or throws. `backend/routes/` holds thin HTTP wrappers that validate the query string, call a source, and map the result to a status code. This split exists so the combined endpoint can call sources **directly as functions** — a route calling another route over HTTP would cost a real network round trip per source, lose error detail, and risk the server deadlocking on itself.
+- **Combined endpoint:** `GET /api/sky` fans out to every source in parallel via `Promise.allSettled`, then reduces them to a 0–100 score, per-target verdicts, and a headline sentence. It also returns the raw source payloads so the frontend can show supporting detail. The browser makes one request; adding a new source changes nothing client-side.
+- **Scoring model:** The score is **multiplicative** (`cloud × darkness`), not a weighted sum, with aurora added as a capped bonus scaled by cloud cover. A weighted sum would let a pristine dark site score respectably under solid overcast, because darkness would prop the number up. Multiplying means either factor near zero drags the result to zero — the darkest sky in the world is worth nothing under cloud. Per-target verdicts are computed **independently** of the score; the two can disagree (a low score alongside "bright planets: likely" is a real and useful combination).
 - **Location handling:** The user enters a city/place or coordinates; the backend resolves that to latitude/longitude (geocoding), which is the key every data source is queried by.
-- **Database:** **PostgreSQL.** Used for structured/reference data — e.g. cached geocoding results, the static light-pollution lookup, and (later) saved locations. Live API responses are fetched on demand and may be cached short-term; they are not the database's primary purpose initially.
-- **Data sources (free tiers):** NOAA SWPC (aurora/space weather, no key), Open-Meteo (cloud cover, no key), NWS/NOAA (severe weather alerts, no key), N2YO or CelesTrak (satellite passes, free key), an astronomy source TBD for planets/eclipses, and a static light-pollution dataset.
+- **Database:** **PostgreSQL, deferred.** Originally planned to hold the static light-pollution lookup. Abandoned for that purpose once the data's actual shape was clear: it is a fixed rectangular raster, so array index math beats any SQL query and adds no dependency. The grid is a preprocessed binary file loaded into memory at startup. Postgres remains the intended home for genuinely relational data — saved locations, cached geocoding results — and will be introduced when that need is real rather than anticipated.
+- **Data sources (free tiers):** NOAA SWPC (aurora/space weather, no key), Open-Meteo Forecast (cloud cover + sunrise/sunset, no key), Open-Meteo Geocoding (no key), the Falchi et al. 2016 World Atlas (light pollution, static file), NWS/NOAA (severe weather alerts, no key), N2YO or CelesTrak (satellite passes, free key), and an astronomy source TBD for planets/eclipses.
+- **Licensing constraint:** The World Atlas light-pollution dataset is **CC BY-NC 4.0 (NonCommercial)**. Attribution is returned in every API response. This blocks commercial use of LightMatter while that dataset is included; the grid loader reads its geometry from the file's own header specifically so a differently-licensed dataset can be swapped in without code changes.
 - **Secrets handling:** API keys live in a `.env` file that is git-ignored from day one; keys are never committed.
 - **Resilience:** A failure from one data source must not fail the whole response. Each source's section degrades independently with a clear "unavailable" state.
 - **Output model:** Each viewable item is reduced to a simple visibility verdict (e.g. likely / unlikely / not visible) plus supporting detail, so the frontend can present an at-a-glance summary.
@@ -63,7 +66,8 @@ the gathering and interpretation.
 - **Highest sensible seam:** the backend's combined "sky data for a location" endpoint is the primary seam to test — feeding it a known location and asserting the normalized, combined result. This covers the fan-out logic with one seam rather than testing each API call in isolation.
 - **External APIs are mocked** in tests so the suite is fast and doesn't depend on live network conditions or burn rate limits; real API calls are exercised manually/integration-style, separately.
 - **Per-source normalizers** (the code that turns each API's raw response into LightMatter's common shape) are good unit-test candidates, since they are pure transformations with predictable inputs and outputs.
-- No prior art in the repo yet (greenfield); test conventions will be established with the first endpoint.
+- **The seam now exists.** `backend/routes/sky.js` exports its combining functions (`computeScore`, `targetVerdicts`, `auroraVerdict`, `buildHeadline`, `buildReport`) as pure functions with no Express and no network. Tests construct fake source objects and assert the resulting score and verdicts directly. Each source module likewise exports its pure helpers.
+- No formal test runner is wired up yet; the logic above has been exercised by ad-hoc scripts. Establishing the runner and converting those into a real suite is the next testing task.
 
 ## Out of Scope
 
@@ -84,5 +88,21 @@ the gathering and interpretation.
 - The astronomy source for planets/eclipses is an open decision: choose between a
   hosted astronomy API and computing positions locally (e.g. an ephemeris
   library). To be decided when that feature is built.
-- Light-pollution data format (tile layer vs. point lookup) is undecided and will
-  be settled when that feature is built.
+- **Light-pollution data format: settled.** Point lookup against a preprocessed
+  grid. `tools/build-lightpollution.js` downsamples the 2.9 GB source GeoTIFF
+  (30 arcsec) by 8× to a ~23 MB binary at 4 arcmin (~7 km), storing SQM as
+  `uint16 = SQM × 1000` behind a self-describing JSON header. Two constraints
+  drove the implementation: averaging must happen in **linear** brightness
+  (mcd/m²) rather than magnitudes, because magnitudes are logarithmic and
+  averaging them computes a geometric mean that under-weights bright cells; and
+  the no-data sentinel (`-3.4e38`) must be filtered rather than averaged in.
+- **Known limitation of the 7 km grid:** downsampling error scales with how
+  isolated a bright area is. Large lit metros are near-exact (Chicago drifts
+  0.01 mag), but a small city ringed by wilderness averages in the dark
+  surroundings and reads too dark — Tromsø drifts 0.96 mag optimistic. The bias
+  is toward reporting isolated towns as darker than they are.
+- **Data vintage:** the World Atlas reflects 2014–2015 satellite observations.
+  Light pollution has generally increased since, so real skies are typically
+  somewhat brighter than reported. The response includes `dataYear` so the UI can
+  say so. A 2024 recalculation (Lorenz) exists but publishes only rendered
+  images; obtaining its numeric grid would require contacting the author.
