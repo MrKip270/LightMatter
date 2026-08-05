@@ -259,12 +259,47 @@ function verdictClass(verdict) {
 
 // The combined report: score, headline, and the per-target ladder.
 function renderSummary(data) {
-  const scoreBlock =
-    data.score === null
-      ? `<div class="score score-unknown">--</div>`
-      : `<div class="score" data-band="${
-          data.score >= 70 ? "good" : data.score >= 45 ? "fair" : data.score >= 20 ? "poor" : "bad"
-        }">${data.score}<span class="score-max">/100</span></div>`;
+  // Two scores answer two different questions, so they get equal visual weight
+  // and explicit labels. "Tonight" is actionable — go out or don't. "At its
+  // best" is a stable property of the place — worth a trip or not. Without the
+  // labels a reader would assume the bigger number is just a better version of
+  // the smaller one.
+  const band = (score) =>
+    score >= 70 ? "good" : score >= 45 ? "fair" : score >= 20 ? "poor" : "bad";
+
+  const scoreBox = (value, label, sublabel) =>
+    value === null
+      ? `<div class="score-box">
+           <div class="score score-unknown">--</div>
+           <div class="score-label">${escapeHtml(label)}</div>
+           <div class="score-sub muted">no data</div>
+         </div>`
+      : `<div class="score-box">
+           <div class="score" data-band="${band(value)}">${value}<span class="score-max">/100</span></div>
+           <div class="score-label">${escapeHtml(label)}</div>
+           <div class="score-sub muted">${escapeHtml(sublabel || "")}</div>
+         </div>`;
+
+  // Only worth saying when the gap is real — on a clear new-moon night the two
+  // scores are nearly equal and the comparison is noise.
+  const gap =
+    data.score !== null && data.potentialScore !== null
+      ? data.potentialScore - data.score
+      : null;
+  const gapNote =
+    gap !== null && gap >= 15
+      ? `Tonight is well below what this location can do — conditions, not the site, are the limit.`
+      : gap !== null && gap < 8 && data.potentialScore >= 45
+        ? `Tonight is close to the best this location offers.`
+        : "";
+
+  const scoreBlock = `
+    <div class="scores">
+      ${scoreBox(data.score, "Tonight", "clouds + moon + light")}
+      ${scoreBox(data.potentialScore, "At its best", data.potentialLabel)}
+    </div>
+    ${gapNote ? `<p class="detail muted gap-note">${escapeHtml(gapNote)}</p>` : ""}
+  `;
 
   // The single most actionable line in the whole report: when to go outside.
   const window = data.bestWindow

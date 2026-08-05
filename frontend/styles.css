@@ -94,8 +94,43 @@ body {
   margin-bottom: 1.25rem;
 }
 
+/* Two scores side by side, equal weight — they answer different questions,
+   so neither is subordinate to the other. */
+.scores {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.score-box {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+
+.score-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #444;
+  margin-top: 0.25rem;
+}
+
+.score-sub {
+  font-size: 0.75rem;
+  line-height: 1.25;
+  margin-top: 0.1rem;
+}
+
+.gap-note {
+  margin-top: -0.35rem;
+  margin-bottom: 0.75rem;
+}
+
 .score {
-  font-size: 2.6rem;
+  font-size: 2.4rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -187,5 +222,13 @@ body {
   }
   .target-reason {
     grid-column: 1;
+  }
+  /* Keep the two scores side by side even on a phone — the comparison IS the
+     point, and stacking them would read as a sequence rather than a pair. */
+  .scores {
+    gap: 0.5rem;
+  }
+  .score {
+    font-size: 1.9rem;
   }
 }

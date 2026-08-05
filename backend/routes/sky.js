@@ -214,19 +214,49 @@ function darknessFactor(sqm) {
 // Aurora is added rather than multiplied, because it is a bonus event and not a
 // precondition. It is scaled by cloudFactor so it cannot inflate a night you
 // physically cannot see.
-function computeScore(clouds, effectiveSky, aurora) {
-  const cloud = cloudFactor(clouds);
-  const darkness = darknessFactor(effectiveSky);
-
+// The scoring formula itself, taking already-computed factors.
+//
+// Extracted so that BOTH scores run through identical arithmetic. The potential
+// score is not a separate formula — it is this one with perfect weather and no
+// moon substituted in. Writing it twice would let the two definitions drift
+// apart, and then "58 tonight out of 92 possible" would stop meaning anything.
+function scoreFrom(cloud, darkness, auroraProbability = 0) {
   // Without both, a number would be a guess dressed up as a measurement.
   if (cloud === null || darkness === null) return null;
 
   const base = 100 * cloud * darkness;
-
-  const probability = aurora?.dataAvailable ? aurora.auroraProbability : 0;
-  const auroraBonus = Math.min(20, probability / 5) * cloud;
+  const auroraBonus = Math.min(20, auroraProbability / 5) * cloud;
 
   return Math.round(clamp(base + auroraBonus, 0, 100));
+}
+
+function computeScore(clouds, effectiveSky, aurora) {
+  return scoreFrom(
+    cloudFactor(clouds),
+    darknessFactor(effectiveSky),
+    aurora?.dataAvailable ? aurora.auroraProbability : 0
+  );
+}
+
+// What this location gives you on a perfect night: clear skies, no moon.
+//
+// Deliberately excludes the aurora bonus. Aurora depends on solar activity that
+// varies over an 11-year cycle, so folding it in would make "potential" mean
+// something that changes year to year — the opposite of a stable property of a
+// place. This number should only move when the light pollution does.
+function computePotentialScore(lightPollution) {
+  const baseline = lightPollution?.dataAvailable ? lightPollution.sqm : null;
+  return scoreFrom(1, darknessFactor(baseline), 0);
+}
+
+// Short label for the potential score, describing the SITE rather than tonight.
+function describePotential(score) {
+  if (score === null) return null;
+  if (score >= 85) return "Exceptional dark-sky site";
+  if (score >= 65) return "Good dark site";
+  if (score >= 45) return "Usable on a clear night";
+  if (score >= 25) return "Limited by local light pollution";
+  return "Heavily light polluted";
 }
 
 // --- Verdicts -----------------------------------------------------------------
@@ -406,9 +436,16 @@ function buildReport(clouds, lightPollution, aurora, moon, timeline) {
       : 0;
 
   const score = computeScore(clouds, effectiveSky, aurora);
+  const potentialScore = computePotentialScore(lightPollution);
 
   return {
-    score, // 0-100, or null when clouds or light pollution are missing
+    score, // 0-100 for TONIGHT, or null when clouds or light pollution are missing
+    // What the site is capable of on a clear, moonless night. Depends only on
+    // light pollution, so it is a stable property of the place — the number to
+    // compare locations by, and the one that says whether a trip is worth
+    // planning at all.
+    potentialScore,
+    potentialLabel: describePotential(potentialScore),
     headline: buildHeadline(score, clouds, effectiveSky, moonPenalty),
     bestWindow,
     sky: {
@@ -484,7 +521,10 @@ module.exports = router;
 module.exports.helpers = {
   cloudFactor,
   darknessFactor,
+  scoreFrom,
   computeScore,
+  computePotentialScore,
+  describePotential,
   cloudCeiling,
   targetVerdicts,
   auroraVerdict,
