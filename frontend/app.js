@@ -190,6 +190,46 @@ function renderLightPollution(settled) {
   `;
 }
 
+// Render the moon section from an allSettled result.
+function renderMoon(settled) {
+  if (settled.status === "rejected") {
+    return unavailableCard("Moon", `Unavailable — ${settled.reason.message}`);
+  }
+
+  const data = settled.value;
+
+  const shortDate = (iso) =>
+    new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  // An eclipse is worth surfacing loudly — they're rare and dateable.
+  const eclipse = data.upcomingEclipse
+    ? `<p class="detail eclipse">${
+        data.upcomingEclipse.visibleHere ? "Visible here" : "Not visible from here"
+      }: ${escapeHtml(data.upcomingEclipse.type)} lunar eclipse in
+       ${data.upcomingEclipse.daysAway} days (${shortDate(
+        data.upcomingEclipse.greatestEclipseUtc
+      )}). ${escapeHtml(data.upcomingEclipse.note)}</p>`
+    : "";
+
+  return `
+    <div class="card">
+      <h3>Moon</h3>
+      <p class="verdict"><strong>${escapeHtml(data.phaseName)}</strong> —
+        ${data.illuminatedFraction}% lit</p>
+      <p class="detail">Brightness vs a full moon: ${data.brightnessVsFullMoon}%
+        <span class="muted">(moonlight falls off far faster than the lit area suggests)</span></p>
+      <p class="detail">Currently ${
+        data.aboveHorizonNow
+          ? `${data.altitudeNow}° above the horizon`
+          : "below the horizon"
+      }</p>
+      <p class="detail muted">Next new moon ${shortDate(data.nextNewMoon)} ·
+        next full moon ${shortDate(data.nextFullMoon)}</p>
+      ${eclipse}
+    </div>
+  `;
+}
+
 // Render the aurora section from an allSettled result.
 function renderAurora(settled) {
   if (settled.status === "rejected") {
@@ -226,6 +266,24 @@ function renderSummary(data) {
           data.score >= 70 ? "good" : data.score >= 45 ? "fair" : data.score >= 20 ? "poor" : "bad"
         }">${data.score}<span class="score-max">/100</span></div>`;
 
+  // The single most actionable line in the whole report: when to go outside.
+  const window = data.bestWindow
+    ? `<p class="window"><strong>Best window:</strong> ${formatHour(
+        data.bestWindow.start
+      )} to ${formatHour(data.bestWindow.end)} (${data.bestWindow.hours} hr)${
+        data.bestWindow.moonFree ? "" : " — moonlit"
+      }</p>`
+    : `<p class="window muted">No usable window tonight.</p>`;
+
+  // Only mention the moon penalty when it's actually doing damage. Showing
+  // "0.01 magnitudes" would be noise.
+  const moonLine =
+    data.sky.moonPenaltyMagnitudes >= 0.3
+      ? `<p class="detail muted">Moonlight is costing
+         ${data.sky.moonPenaltyMagnitudes} magnitudes — this site reads
+         ${data.sky.baselineSqm} without the Moon, ${data.sky.effectiveSqm} tonight.</p>`
+      : "";
+
   const targets = data.targets
     .map(
       (target) => `
@@ -241,6 +299,8 @@ function renderSummary(data) {
     <div class="summary">
       ${scoreBlock}
       <p class="headline">${escapeHtml(data.headline)}</p>
+      ${window}
+      ${moonLine}
       <ul class="targets">${targets}</ul>
     </div>
   `;
@@ -266,6 +326,7 @@ async function showSkyReportForCoords(lat, lon, label) {
       ${renderSummary(data)}
       <h4 class="detail-heading">Where that came from</h4>
       ${renderClouds(asSettled(data.sources.clouds))}
+      ${renderMoon(asSettled(data.sources.moon))}
       ${renderLightPollution(asSettled(data.sources.lightPollution))}
       ${renderAurora(asSettled(data.sources.aurora))}
     `;

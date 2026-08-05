@@ -11,6 +11,7 @@ const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
 const cloudsRoute = require("./routes/clouds");
 const lightPollutionRoute = require("./routes/lightpollution");
+const moonRoute = require("./routes/moon");
 const skyRoute = require("./routes/sky");
 
 // 4. Create the Express application.
@@ -30,6 +31,7 @@ app.use("/api/geocode", geocodeRoute);
 app.use("/api/aurora", auroraRoute);
 app.use("/api/clouds", cloudsRoute);
 app.use("/api/lightpollution", lightPollutionRoute);
+app.use("/api/moon", moonRoute);
 app.use("/api/sky", skyRoute);
 
 // 7. Serve the frontend folder as static files. Anything not matched by an

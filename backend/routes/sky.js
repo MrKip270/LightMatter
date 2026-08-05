@@ -15,11 +15,130 @@
 
 const express = require("express");
 const { getAurora } = require("../sources/aurora");
-const { getClouds } = require("../sources/clouds");
+const { getClouds, helpers: cloudHelpers } = require("../sources/clouds");
 const { getLightPollution } = require("../sources/lightpollution");
+const { getMoon, effectiveSqm, helpers: moonHelpers } = require("../sources/moon");
 const { validateCoordinates } = require("./validate");
 
 const router = express.Router();
+
+// Our night hours are naive LOCAL strings ("2026-08-05T21:00"), which is what
+// makes comparing them to each other safe. Astronomy needs the opposite: a real
+// UTC instant. Parsing as UTC then subtracting the location's offset converts
+// between the two without ever relying on the server's own timezone.
+function localIsoToUtc(localIso, utcOffsetSeconds) {
+  return new Date(Date.parse(`${localIso}:00Z`) - utcOffsetSeconds * 1000);
+}
+
+// Walk the night hour by hour, combining cloud cover with moonlight to get the
+// sky brightness actually available in that hour.
+//
+// This is the join that makes the whole report honest. Cloud cover alone says
+// "clear at 2 AM"; light pollution alone says "dark site"; the moon alone says
+// "full". Only together do they say "clear and dark from 3 AM, once the moon
+// sets" — which is the sentence a person can act on.
+function buildNightTimeline(clouds, lightPollution, lat, lon) {
+  if (!clouds?.dataAvailable || !clouds.hourly?.length) return null;
+
+  const offset = clouds.location?.utcOffsetSeconds ?? 0;
+  const siteSqm = lightPollution?.dataAvailable ? lightPollution.sqm : null;
+
+  return clouds.hourly.map((hour) => {
+    const utc = localIsoToUtc(hour.time, offset);
+    const moon = getMoon(lat, lon, utc);
+    const sqm = effectiveSqm(siteSqm, moon.phase, moon.altitudeNow);
+
+    return {
+      time: hour.time,
+      cloudCover: hour.cloudCover,
+      clear: hour.cloudCover !== null && hour.cloudCover <= cloudHelpers.CLEAR_MAX,
+      moonAltitude: moon.altitudeNow,
+      effectiveSqm: sqm === null ? null : Number(sqm.toFixed(2)),
+      moonPenalty:
+        siteSqm === null ? null : Number((siteSqm - sqm).toFixed(2)),
+    };
+  });
+}
+
+// Longest contiguous stretch that is BOTH clear and effectively moonless.
+// Falls back to the longest merely-clear stretch when the moon is up all night,
+// flagging that it did so — "your best window is moonlit" is still useful.
+function findBestWindow(timeline) {
+  if (!timeline) return null;
+
+  const runOf = (predicate) => {
+    let best = { hours: 0, start: null, end: null };
+    let startIndex = null;
+
+    for (let i = 0; i <= timeline.length; i++) {
+      const ok = i < timeline.length && predicate(timeline[i]);
+      if (ok && startIndex === null) startIndex = i;
+      else if (!ok && startIndex !== null) {
+        const hours = i - startIndex;
+        if (hours > best.hours) {
+          best = { hours, start: timeline[startIndex].time, end: timeline[i - 1].time };
+        }
+        startIndex = null;
+      }
+    }
+    return best;
+  };
+
+  const moonless = runOf(
+    (hour) =>
+      hour.clear &&
+      (hour.moonPenalty === null ||
+        hour.moonPenalty <= moonHelpers.MOONLESS_PENALTY_THRESHOLD)
+  );
+
+  // `moonFree` means moonlight is not meaningfully affecting the view — which
+  // is not the same as "the moon is down". In a city the moon can be 45 degrees
+  // up and still contribute 0.01 magnitudes, because the sky is already far
+  // brighter than the moon can make it.
+  if (moonless.hours >= cloudHelpers.MIN_USEFUL_RUN_HOURS) {
+    return { ...moonless, moonFree: true };
+  }
+
+  const clear = runOf((hour) => hour.clear);
+  if (clear.hours >= cloudHelpers.MIN_USEFUL_RUN_HOURS) {
+    return { ...clear, moonFree: false };
+  }
+
+  return null;
+}
+
+// Mean sky brightness across a set of hours.
+//
+// Averaged in LINEAR FLUX, then converted back — the same rule that governed
+// the atlas downsampling and the moonlight model. Averaging magnitudes directly
+// would compute a geometric mean and report the night as darker than it was.
+function meanSqm(values) {
+  if (values.length === 0) return null;
+  const meanFlux =
+    values.reduce((sum, sqm) => sum + Math.pow(10, -0.4 * sqm), 0) / values.length;
+  return -2.5 * Math.log10(meanFlux);
+}
+
+// The sky brightness to judge the night by.
+//
+// Scoped to the window we're actually advertising, not the whole night. Scoring
+// the single darkest hour while telling the user "your window is 10 hours" would
+// be quietly dishonest — it promises the best moment as though it lasted all
+// night. Mean across the advertised window keeps the number and the sentence
+// describing the same thing.
+function bestEffectiveSqm(timeline, window, lightPollution) {
+  if (!timeline) return lightPollution?.dataAvailable ? lightPollution.sqm : null;
+
+  let hours = timeline.filter((hour) => hour.effectiveSqm !== null);
+  if (window) {
+    hours = hours.filter(
+      (hour) => hour.time >= window.start && hour.time <= window.end
+    );
+  }
+  if (hours.length === 0) return null;
+
+  return meanSqm(hours.map((hour) => hour.effectiveSqm));
+}
 
 // --- Targets ------------------------------------------------------------------
 // Each target is gated by how dark the sky must be. Thresholds are in SQM
@@ -75,11 +194,15 @@ function cloudFactor(clouds) {
   return clamp(fromAverage, 0, 1);
 }
 
-// How dark the site is, independent of tonight's weather. Maps the useful part
-// of the SQM range (16 = inner city, 22 = pristine) onto 0-1.
-function darknessFactor(lightPollution) {
-  if (!lightPollution || !lightPollution.dataAvailable) return null;
-  return clamp((lightPollution.sqm - 16) / (22 - 16), 0, 1);
+// How dark the sky actually is tonight. Maps the useful part of the SQM range
+// (16 = inner city, 22 = pristine) onto 0-1.
+//
+// Takes an EFFECTIVE sqm — the site's baseline already adjusted for moonlight —
+// rather than the raw light pollution reading. That single change is what stops
+// the report promising the Milky Way on a full-moon night.
+function darknessFactor(sqm) {
+  if (sqm === null || sqm === undefined) return null;
+  return clamp((sqm - 16) / (22 - 16), 0, 1);
 }
 
 // Score is MULTIPLICATIVE, not a weighted sum. That is the important modelling
@@ -91,9 +214,9 @@ function darknessFactor(lightPollution) {
 // Aurora is added rather than multiplied, because it is a bonus event and not a
 // precondition. It is scaled by cloudFactor so it cannot inflate a night you
 // physically cannot see.
-function computeScore(clouds, lightPollution, aurora) {
+function computeScore(clouds, effectiveSky, aurora) {
   const cloud = cloudFactor(clouds);
-  const darkness = darknessFactor(lightPollution);
+  const darkness = darknessFactor(effectiveSky);
 
   // Without both, a number would be a guess dressed up as a measurement.
   if (cloud === null || darkness === null) return null;
@@ -126,11 +249,11 @@ function weakest(a, b) {
   return RANK[a] <= RANK[b] ? a : b;
 }
 
-function targetVerdicts(clouds, lightPollution) {
+function targetVerdicts(clouds, effectiveSky, moonPenalty = 0) {
   const ceiling = cloudCeiling(clouds);
 
   return TARGETS.map((target) => {
-    if (!lightPollution || !lightPollution.dataAvailable) {
+    if (effectiveSky === null || effectiveSky === undefined) {
       return {
         name: target.name,
         verdict: "Unknown",
@@ -139,13 +262,20 @@ function targetVerdicts(clouds, lightPollution) {
       };
     }
 
-    const sqm = lightPollution.sqm;
+    const sqm = effectiveSky;
 
     if (sqm < target.minSqm) {
+      // Naming the CAUSE matters. "Too bright" is not actionable; "too bright
+      // because of the Moon" means come back in two weeks, while "too bright
+      // because of the city" means drive somewhere else. Same verdict, opposite
+      // advice.
+      const blamesMoon = moonPenalty >= 0.5 && sqm + moonPenalty >= target.minSqm;
       return {
         name: target.name,
         verdict: "Not visible",
-        reason: `Sky is too bright here (${sqm} mag/arcsec²; needs ${target.minSqm}).`,
+        reason: blamesMoon
+          ? `Moonlight is washing this out (${moonPenalty.toFixed(1)} mag of skyglow); the site itself is dark enough.`
+          : `Sky is too bright here (${sqm.toFixed(2)} mag/arcsec²; needs ${target.minSqm}).`,
         detail: target.detail,
       };
     }
@@ -167,7 +297,7 @@ function targetVerdicts(clouds, lightPollution) {
 
 // Aurora is its own thing: it needs darkness AND clear sky AND the sun to
 // cooperate, so it does not fit the fixed-threshold ladder above.
-function auroraVerdict(aurora, clouds, lightPollution) {
+function auroraVerdict(aurora, clouds, effectiveSky) {
   if (!aurora || !aurora.dataAvailable) {
     return { name: "Aurora", verdict: "Unknown", reason: "Aurora data unavailable." };
   }
@@ -186,9 +316,11 @@ function auroraVerdict(aurora, clouds, lightPollution) {
   const fromProbability = probability >= 30 ? "Likely" : "Possible";
   let verdict = weakest(fromProbability, ceiling);
 
-  // Aurora is faint and diffuse, so city glow kills it even when it is
-  // technically overhead. Cap it in bright skies.
-  if (lightPollution?.dataAvailable && lightPollution.sqm < 19.5 && verdict === "Likely") {
+  // Aurora is faint and diffuse, so skyglow kills it even when it is
+  // technically overhead. Uses the EFFECTIVE sky, so a full moon suppresses the
+  // aurora verdict exactly as city glow would — which is physically right, both
+  // are just background light drowning a faint diffuse source.
+  if (effectiveSky !== null && effectiveSky < 19.5 && verdict === "Likely") {
     verdict = "Possible";
   }
 
@@ -205,27 +337,42 @@ function auroraVerdict(aurora, clouds, lightPollution) {
 // One sentence explaining the score. The valuable part is naming the LIMITING
 // FACTOR — "42" tells you nothing actionable, but "clouds are the problem"
 // means come back tomorrow, while "city glow is the problem" means drive.
-function buildHeadline(score, clouds, lightPollution) {
+function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
   if (score === null) {
     return "Not enough data to score tonight — see the individual sources below.";
   }
 
   const cloud = cloudFactor(clouds);
-  const darkness = darknessFactor(lightPollution);
+  const darkness = darknessFactor(effectiveSky);
   const limitedByCloud = cloud < darkness;
 
+  // Three possible culprits now, not two. The moon is called out separately
+  // because it is the only one that is guaranteed to fix itself on a known
+  // schedule — worth saying so.
+  const moonIsTheProblem = !limitedByCloud && moonPenalty >= 1.0;
+
   if (score >= 70) {
-    return "Excellent conditions tonight — clear skies over a genuinely dark site.";
+    // Even a good night can be moon-limited. Saying "no significant moonlight"
+    // unconditionally here was wrong: a full moon over a pristine site still
+    // scores in the 70s, and the user deserves to know it would be better in
+    // two weeks.
+    return moonPenalty >= 1.0
+      ? `Very good tonight — clear and dark, though the Moon is costing you about ${moonPenalty.toFixed(1)} magnitudes.`
+      : "Excellent conditions tonight — clear, dark, and no significant moonlight.";
   }
   if (score >= 45) {
-    return limitedByCloud
-      ? "Decent night, but cloud will cut into it."
-      : "Clear enough tonight, though local light pollution limits what you'll see.";
+    if (limitedByCloud) return "Decent night, but cloud will cut into it.";
+    if (moonIsTheProblem) {
+      return `Clear tonight, but the Moon is adding ${moonPenalty.toFixed(1)} magnitudes of skyglow — this site is much better near new moon.`;
+    }
+    return "Clear enough tonight, though local light pollution limits what you'll see.";
   }
   if (score >= 20) {
-    return limitedByCloud
-      ? "Poor viewing — cloud is the main problem tonight."
-      : "Poor viewing — the sky here is too bright for much beyond the basics.";
+    if (limitedByCloud) return "Poor viewing — cloud is the main problem tonight.";
+    if (moonIsTheProblem) {
+      return "Poor viewing — moonlight is washing out an otherwise dark sky.";
+    }
+    return "Poor viewing — the sky here is too bright for much beyond the basics.";
   }
   return limitedByCloud
     ? "Not a night for it — cloud cover blocks nearly everything."
@@ -242,19 +389,40 @@ function unwrap(settled) {
     : { data: null, error: settled.reason.message };
 }
 
-function buildReport(clouds, lightPollution, aurora) {
-  const score = computeScore(clouds, lightPollution, aurora);
+function buildReport(clouds, lightPollution, aurora, moon, timeline) {
+  // Order matters: pick the window first, then judge the sky across THAT
+  // window. Computing the brightness first and the window second would let the
+  // two describe different slices of the night.
+  const bestWindow = findBestWindow(timeline);
+
+  const effectiveSky =
+    bestEffectiveSqm(timeline, bestWindow, lightPollution) ??
+    (lightPollution?.dataAvailable ? lightPollution.sqm : null);
+
+  const baseline = lightPollution?.dataAvailable ? lightPollution.sqm : null;
+  const moonPenalty =
+    baseline !== null && effectiveSky !== null
+      ? Math.max(0, baseline - effectiveSky)
+      : 0;
+
+  const score = computeScore(clouds, effectiveSky, aurora);
 
   return {
     score, // 0-100, or null when clouds or light pollution are missing
-    headline: buildHeadline(score, clouds, lightPollution),
+    headline: buildHeadline(score, clouds, effectiveSky, moonPenalty),
+    bestWindow,
+    sky: {
+      baselineSqm: baseline, // what the site is capable of
+      effectiveSqm: effectiveSky === null ? null : Number(effectiveSky.toFixed(2)),
+      moonPenaltyMagnitudes: Number(moonPenalty.toFixed(2)),
+    },
     targets: [
-      ...targetVerdicts(clouds, lightPollution),
-      auroraVerdict(aurora, clouds, lightPollution),
+      ...targetVerdicts(clouds, effectiveSky, moonPenalty),
+      auroraVerdict(aurora, clouds, effectiveSky),
     ],
     factors: {
       cloud: cloudFactor(clouds),
-      darkness: darknessFactor(lightPollution),
+      darkness: darknessFactor(effectiveSky),
     },
   };
 }
@@ -271,17 +439,29 @@ router.get("/", async (req, res) => {
   // allSettled, not all — one dead source must degrade its own section only.
   // getLightPollution is synchronous, but Promise.resolve().then() folds it
   // into the same settled shape so the unwrapping below stays uniform.
-  const [cloudsResult, lightResult, auroraResult] = await Promise.allSettled([
+  const [cloudsResult, lightResult, auroraResult, moonResult] = await Promise.allSettled([
     getClouds(lat, lon),
     Promise.resolve().then(() => getLightPollution(lat, lon)),
     getAurora(lat, lon),
+    Promise.resolve().then(() => getMoon(lat, lon)),
   ]);
 
   const clouds = unwrap(cloudsResult);
   const lightPollution = unwrap(lightResult);
   const aurora = unwrap(auroraResult);
+  const moon = unwrap(moonResult);
 
-  const report = buildReport(clouds.data, lightPollution.data, aurora.data);
+  // Built after the fan-out because it needs cloud hours AND the site's
+  // brightness before it can compute anything.
+  const timeline = buildNightTimeline(clouds.data, lightPollution.data, lat, lon);
+
+  const report = buildReport(
+    clouds.data,
+    lightPollution.data,
+    aurora.data,
+    moon.data,
+    timeline
+  );
 
   res.json({
     location: { lat, lon },
@@ -292,7 +472,9 @@ router.get("/", async (req, res) => {
       clouds: clouds.data ?? { error: clouds.error },
       lightPollution: lightPollution.data ?? { error: lightPollution.error },
       aurora: aurora.data ?? { error: aurora.error },
+      moon: moon.data ?? { error: moon.error },
     },
+    timeline,
   });
 });
 
@@ -308,5 +490,9 @@ module.exports.helpers = {
   auroraVerdict,
   buildHeadline,
   buildReport,
+  buildNightTimeline,
+  findBestWindow,
+  bestEffectiveSqm,
+  localIsoToUtc,
   TARGETS,
 };

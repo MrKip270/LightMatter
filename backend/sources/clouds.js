@@ -148,6 +148,10 @@ async function getClouds(lat, lon) {
     // actually used.
     used: { lat: data.latitude, lon: data.longitude },
     timezone: data.timezone,
+    // Needed to turn our naive local timestamps back into real UTC instants,
+    // which is what any astronomical calculation requires. The local strings
+    // are perfect for comparing hours to each other, but useless to suncalc.
+    utcOffsetSeconds: data.utc_offset_seconds,
   };
 
   // The request worked but there is nothing to report. NOT an error.
