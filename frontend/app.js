@@ -103,6 +103,17 @@ async function fetchJson(url) {
   return data;
 }
 
+// The backend now returns each source either as its normal object or as
+// { error: "..." }. Normalise that into the { status, value/reason } shape the
+// render functions below already expect, so they didn't have to change when we
+// moved from three fetches to one.
+function asSettled(source) {
+  if (!source || source.error) {
+    return { status: "rejected", reason: { message: source?.error || "No data" } };
+  }
+  return { status: "fulfilled", value: source };
+}
+
 // A consistent "this source didn't work" block, so every section degrades the
 // same way. The PRD requires one dead source not to break the page.
 function unavailableCard(title, reason) {
@@ -154,6 +165,31 @@ function renderClouds(settled) {
   `;
 }
 
+// Render the light pollution section from an allSettled result.
+function renderLightPollution(settled) {
+  if (settled.status === "rejected") {
+    return unavailableCard("Light pollution", `Unavailable — ${settled.reason.message}`);
+  }
+
+  const data = settled.value;
+
+  if (!data.dataAvailable) {
+    return unavailableCard("Light pollution", data.visibility);
+  }
+
+  return `
+    <div class="card">
+      <h3>Light pollution</h3>
+      <p class="verdict"><strong>${escapeHtml(data.sky)}</strong></p>
+      <p class="detail">${escapeHtml(data.visibility)}</p>
+      <p class="detail">Sky brightness: ${data.sqm} mag/arcsec² —
+        stars visible to magnitude ${data.nakedEyeLimitingMagnitude}</p>
+      <p class="detail muted">${data.dataYear} data, ~${data.resolutionKm} km resolution.
+        ${escapeHtml(data.attribution)}</p>
+    </div>
+  `;
+}
+
 // Render the aurora section from an allSettled result.
 function renderAurora(settled) {
   if (settled.status === "rejected") {
@@ -175,42 +211,71 @@ function renderAurora(settled) {
   `;
 }
 
-// Ask every source at once, then render whatever came back.
+// Map a verdict to a CSS class, so the four levels are visually distinct
+// without relying on colour alone (the word is always there too).
+function verdictClass(verdict) {
+  return `verdict-${verdict.toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+// The combined report: score, headline, and the per-target ladder.
+function renderSummary(data) {
+  const scoreBlock =
+    data.score === null
+      ? `<div class="score score-unknown">--</div>`
+      : `<div class="score" data-band="${
+          data.score >= 70 ? "good" : data.score >= 45 ? "fair" : data.score >= 20 ? "poor" : "bad"
+        }">${data.score}<span class="score-max">/100</span></div>`;
+
+  const targets = data.targets
+    .map(
+      (target) => `
+        <li class="${verdictClass(target.verdict)}">
+          <span class="target-verdict">${escapeHtml(target.verdict)}</span>
+          <span class="target-name">${escapeHtml(target.name)}</span>
+          <span class="target-reason">${escapeHtml(target.reason)}</span>
+        </li>`
+    )
+    .join("");
+
+  return `
+    <div class="summary">
+      ${scoreBlock}
+      <p class="headline">${escapeHtml(data.headline)}</p>
+      <ul class="targets">${targets}</ul>
+    </div>
+  `;
+}
+
+// One request, one answer. The backend fans out to every source in parallel and
+// does the combining, which is why this is a single fetch rather than three:
+// the fan-out moved server-side where it belongs, and the browser no longer
+// needs to know how many sources exist. Adding a fifth source later changes
+// nothing here.
 async function showSkyReportForCoords(lat, lon, label) {
   setStatus(`Checking the sky for ${label}...`);
   resultsEl.hidden = true;
 
-  // Promise.allSettled, NOT Promise.all — this is the important line.
-  //
-  //   Promise.all      rejects the moment ANY promise rejects, discarding the
-  //                    results of the ones that succeeded.
-  //   Promise.allSettled always waits for all of them and hands back a
-  //                    { status, value | reason } for each, whatever happened.
-  //
-  // Promise.all would mean a NOAA outage blanks the cloud forecast too, which is
-  // precisely the failure the PRD's resilience rule forbids. allSettled is how
-  // "each source degrades independently" is actually implemented.
-  //
-  // Both requests are also started BEFORE either is awaited, so they travel in
-  // parallel. Awaiting them one after the other would make the page as slow as
-  // the sum of both APIs instead of the slower of the two.
-  const [auroraResult, cloudsResult] = await Promise.allSettled([
-    fetchJson(`/api/aurora?lat=${lat}&lon=${lon}`),
-    fetchJson(`/api/clouds?lat=${lat}&lon=${lon}`),
-  ]);
+  try {
+    const data = await fetchJson(`/api/sky?lat=${lat}&lon=${lon}`);
 
-  resultsEl.innerHTML = `
-    <h2>${escapeHtml(label)}</h2>
-    ${renderClouds(cloudsResult)}
-    ${renderAurora(auroraResult)}
-  `;
-  resultsEl.hidden = false;
-
-  // Only shout if EVERY source failed. One failure is already visible inside
-  // its own card, so a page-level error there would be noise.
-  const allFailed =
-    auroraResult.status === "rejected" && cloudsResult.status === "rejected";
-  setStatus(allFailed ? "Could not reach any sky data sources." : "");
+    // Order matters for reading, not for fetching. Clouds first because they
+    // can veto the whole night, then light pollution (a fixed property of the
+    // place), then aurora (the thing you might travel for).
+    resultsEl.innerHTML = `
+      <h2>${escapeHtml(label)}</h2>
+      ${renderSummary(data)}
+      <h4 class="detail-heading">Where that came from</h4>
+      ${renderClouds(asSettled(data.sources.clouds))}
+      ${renderLightPollution(asSettled(data.sources.lightPollution))}
+      ${renderAurora(asSettled(data.sources.aurora))}
+    `;
+    resultsEl.hidden = false;
+    setStatus("");
+  } catch (err) {
+    // Only reached if /api/sky itself fails. Individual source failures come
+    // back inside a successful response and degrade card by card.
+    setStatus(`Could not get sky data: ${err.message}`);
+  }
 }
 
 // --- 4. Path A: user typed a city name. ---

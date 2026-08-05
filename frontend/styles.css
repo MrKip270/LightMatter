@@ -84,3 +84,95 @@ body {
 .muted {
   color: #777;
 }
+
+/* --- Combined report ------------------------------------------------------ */
+
+.summary {
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.score {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-max {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #777;
+}
+
+/* Band is set by the score value. Colour is reinforcement only — the number
+   and the headline already carry the meaning, so this stays readable if the
+   colours don't render or the reader can't distinguish them. */
+.score[data-band="good"] { color: #1a7f37; }
+.score[data-band="fair"] { color: #9a6700; }
+.score[data-band="poor"] { color: #bc4c00; }
+.score[data-band="bad"]  { color: #a40e26; }
+.score-unknown           { color: #777; }
+
+.headline {
+  font-size: 1.05rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.targets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #ddd;
+}
+
+.targets li {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.15rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.target-verdict {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+
+.verdict-likely      .target-verdict { color: #1a7f37; }
+.verdict-possible    .target-verdict { color: #9a6700; }
+.verdict-not-visible .target-verdict { color: #a40e26; }
+.verdict-unknown     .target-verdict { color: #777; }
+
+.target-name {
+  font-weight: 600;
+}
+
+.target-reason {
+  grid-column: 2;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.detail-heading {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #777;
+}
+
+/* Stack the verdict above the name on narrow screens (PRD: mobile users). */
+@media (max-width: 30rem) {
+  .targets li {
+    grid-template-columns: 1fr;
+  }
+  .target-reason {
+    grid-column: 1;
+  }
+}
