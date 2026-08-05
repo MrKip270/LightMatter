@@ -29,13 +29,28 @@ Early development, built step by step as a learning project. Working today:
   moon, and upcoming lunar eclipses with per-location visibility. Computed
   locally from orbital mechanics, so it works for any date and never fails for
   network reasons.
-- **Combined report** — `/api/sky` fans out to every source at once and returns a
-  0–100 score, a headline explaining what's limiting it, the **best window**
+- **Combined report** — `/api/sky` fans out to every source at once and returns
+  **two 0–100 scores**, a headline explaining what's limiting tonight, the
+  **best window**
   tonight (the longest stretch that's both clear and moon-free), and a per-target
   ladder (bright planets / constellations / Milky Way / faint objects / aurora)
   each marked Likely, Possible, Not visible, or Unknown.
 
-Moonlight is folded into an **effective sky brightness** that drives the score
+The two scores answer different questions:
+
+- **Tonight** — clouds, moon, and light pollution combined. Actionable: go out or
+  don't.
+- **At its best** — what the location gives you on a clear, moonless night.
+  Depends only on light pollution, so it's a stable property of the place. This
+  is the number to compare locations by, and the one that says whether a trip is
+  worth planning at all. Cherry Springs reads 99 whether tonight is clear or
+  socked in; Chicago reads 19 on its best possible night.
+
+Both run through the same formula — the potential score is simply that formula
+with perfect weather and no moon substituted in, so the two stay comparable
+rather than drifting into separate definitions.
+
+Moonlight is folded into an **effective sky brightness** that drives the tonight score
 and every target threshold, so the report won't promise the Milky Way on a
 full-moon night. The effect is strongly inverse to light pollution — a full moon
 costs a dark site ~2.5–3.5 magnitudes but a city site ~0.1, because the city sky
