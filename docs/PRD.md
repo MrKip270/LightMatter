@@ -85,9 +85,33 @@ the gathering and interpretation.
   shipping speed. Stack: Node.js + JS, PostgreSQL, plain HTML/CSS/JS, Git +
   GitHub (personal account MrKip270), repo at
   https://github.com/MrKip270/LightMatter.
-- The astronomy source for planets/eclipses is an open decision: choose between a
-  hosted astronomy API and computing positions locally (e.g. an ephemeris
-  library). To be decided when that feature is built.
+- **Astronomy source: settled — local computation.** Moon phase, illumination,
+  altitude, and rise/set are computed with `suncalc` (Meeus' *Astronomical
+  Algorithms*). Chosen over a hosted API because it works for **any date**
+  (groundwork for the future-date feature), needs no network or key, and exposes
+  hour-by-hour **altitude**, which daily-summary APIs do not. Altitude turns out
+  to matter as much as phase: a full moon below the horizon washes out nothing.
+  Validated independently — the computed full moon of 2026-08-28T04:12:54Z
+  matches NASA's greatest-eclipse time of 04:12Z to under a minute.
+  *Gotcha: suncalc 2.x returns DEGREES; 1.x returned radians, and most tutorials
+  still assume radians.*
+- **Moonlight model.** Moonlight is converted to a sky-brightness penalty and
+  folded into an **effective SQM** that replaces the raw light-pollution reading
+  everywhere in scoring. Two non-obvious points: (1) brightness uses the lunar
+  phase function `dmag = 0.026α + 4e-9α⁴`, not the illuminated fraction — a
+  quarter moon looks half-lit but delivers ~9% of a full moon's light, so using
+  fraction directly would overstate its effect roughly fivefold; (2) site glow
+  and moonlight are summed in **linear flux** before converting back to
+  magnitudes. The effect is strongly inverse to light pollution: a full moon
+  costs a pristine site ~2.5–3.5 magnitudes but an inner-city site ~0.1, because
+  the city sky is already brighter than the Moon can make it.
+- **Lunar eclipses only, for now.** A lunar eclipse is visible from anywhere on
+  Earth's night side, so per-location visibility reduces to "is the Moon above
+  the horizon at greatest eclipse" — exactly answerable. Solar eclipses need
+  narrow-path ground geometry and are deferred rather than approximated. The
+  catalog in `backend/data/lunar-eclipses.json` lists only eclipses whose times
+  have been verified against a primary source; known dates with unverified times
+  are recorded separately and deliberately not served.
 - **Light-pollution data format: settled.** Point lookup against a preprocessed
   grid. `tools/build-lightpollution.js` downsamples the 2.9 GB source GeoTIFF
   (30 arcsec) by 8× to a ~23 MB binary at 4 arcmin (~7 km), storing SQM as

@@ -25,10 +25,22 @@ Early development, built step by step as a learning project. Working today:
   copy of the Falchi et al. 2016 World Atlas. Reports SQM (magnitudes per square
   arc-second), a plain-language description, and the faintest star magnitude
   visible. No network call; the grid is loaded into memory at startup.
+- **Moon** — phase, illuminated fraction, altitude, rise/set, next new and full
+  moon, and upcoming lunar eclipses with per-location visibility. Computed
+  locally from orbital mechanics, so it works for any date and never fails for
+  network reasons.
 - **Combined report** — `/api/sky` fans out to every source at once and returns a
-  0–100 score, a headline explaining what's limiting it, and a per-target ladder
-  (bright planets / constellations / Milky Way / faint objects / aurora) each
-  marked Likely, Possible, Not visible, or Unknown.
+  0–100 score, a headline explaining what's limiting it, the **best window**
+  tonight (the longest stretch that's both clear and moon-free), and a per-target
+  ladder (bright planets / constellations / Milky Way / faint objects / aurora)
+  each marked Likely, Possible, Not visible, or Unknown.
+
+Moonlight is folded into an **effective sky brightness** that drives the score
+and every target threshold, so the report won't promise the Milky Way on a
+full-moon night. The effect is strongly inverse to light pollution — a full moon
+costs a dark site ~2.5–3.5 magnitudes but a city site ~0.1, because the city sky
+is already brighter than the Moon can make it. Cherry Springs scores **99** at
+new moon and **57** at full moon.
 
 Every input method resolves to latitude/longitude, which is the shared key all
 data sources are queried by. The browser makes one request; the backend fans out
@@ -52,16 +64,19 @@ LightMatter/
 │   ├── sources/             # DATA LOGIC — no Express, no req/res
 │   │   ├── aurora.js        #   getAurora(lat, lon)
 │   │   ├── clouds.js        #   getClouds(lat, lon)
-│   │   └── lightpollution.js#   getLightPollution(lat, lon)
+│   │   ├── lightpollution.js#   getLightPollution(lat, lon)
+│   │   └── moon.js          #   getMoon(lat, lon, date) — local, no network
 │   ├── routes/              # HTTP WRAPPERS — validate, call a source, set status
 │   │   ├── validate.js      #   shared lat/lon validation
 │   │   ├── geocode.js
 │   │   ├── aurora.js
 │   │   ├── clouds.js
 │   │   ├── lightpollution.js
+│   │   ├── moon.js
 │   │   └── sky.js           #   combines all sources into one verdict
 │   └── data/
-│       └── lightpollution.bin  # preprocessed grid (built by tools/, committed)
+│       ├── lightpollution.bin  # preprocessed grid (built by tools/, committed)
+│       └── lunar-eclipses.json # verified eclipse times
 ├── frontend/
 │   ├── index.html           # page markup
 │   ├── styles.css           # styling
@@ -103,6 +118,9 @@ Then open **http://localhost:3000** in your browser.
   forecast model has nothing for that point (distinct from a `502`, which means
   the upstream request actually failed).
 
+- `GET /api/moon?lat=<lat>&lon=<lon>[&date=YYYY-MM-DD]` — phase, illumination,
+  altitude, rise/set, next new/full moon, and any upcoming lunar eclipse with
+  per-location visibility. Accepts any date, past or future.
 - `GET /api/lightpollution?lat=<lat>&lon=<lon>` — returns SQM, a plain-language
   sky description, and naked-eye limiting magnitude. Responds `503` if the grid
   hasn't been built yet, `200` with `dataAvailable: false` outside the atlas
@@ -138,6 +156,10 @@ Chicago drifts 0.01 mag; Tromsø — a small city ringed by dark fjords — drif
 - **NOAA SWPC** — aurora / space weather (no key). *In use.*
 - **Open-Meteo Geocoding** — place name to coordinates (no key). *In use.*
 - **Open-Meteo Forecast** — hourly cloud cover, sunrise/sunset (no key). *In use.*
+- **suncalc** — moon phase, position, rise/set, computed locally from Meeus'
+  *Astronomical Algorithms*. No network, no key. *In use.*
+- **NASA/GSFC Five Millennium Canon of Lunar Eclipses** — eclipse times, static
+  table. *In use.*
 - **World Atlas of Artificial Night Sky Brightness** — light pollution, static
   file. *In use.* Falchi, F. et al. (2016), GFZ Data Services,
   [doi:10.5880/GFZ.1.4.2016.001](https://doi.org/10.5880/GFZ.1.4.2016.001).
@@ -174,12 +196,15 @@ Next up:
    astronomy API versus computing positions locally from an ephemeris. Would
    make the "bright planets" target concrete (*which* planets, and where to
    look) instead of a static threshold.
-3. **Moon phase** — currently missing and a real gap: a full moon washes out the
-   Milky Way almost as effectively as suburban skyglow, so the score can
-   currently overstate a night.
-4. **Severe weather alerts** and **satellite passes**, per the PRD.
-5. **Future dates** — the location input already anticipates this; Open-Meteo
-   returns multi-day forecasts, so extending the cloud window to a chosen date is
-   mostly a parameter change.
+3. **Severe weather alerts** and **satellite passes**, per the PRD.
+4. **Solar eclipses** — deferred deliberately. Unlike lunar eclipses, totality
+   follows a narrow ground track, so honest per-location reporting needs path
+   geometry rather than a date table.
+5. **More eclipse entries** — `backend/data/lunar-eclipses.json` lists known
+   2027–2028 dates whose times still need verifying against NASA's canon before
+   they're served.
+6. **Future dates** — `/api/moon` already accepts `?date=`. Open-Meteo returns
+   multi-day forecasts, so extending the cloud window is mostly a parameter
+   change.
 
 Styling stays deliberately minimal until the remaining data sources land.
