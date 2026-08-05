@@ -1,0 +1,28 @@
+{
+  "_comment": "Lunar eclipse catalog. Times are GREATEST ECLIPSE in UTC. Only entries whose times have been verified against a primary source are listed — a wrong eclipse time is worse than a missing one, because the app would confidently tell someone to go outside on the wrong night. Add more from NASA's Five Millennium Canon (eclipse.gsfc.nasa.gov) or EclipseWise as their times are confirmed.",
+  "_source": "NASA/GSFC Five Millennium Canon of Lunar Eclipses (Espenak & Meeus)",
+  "_knownButUnverifiedTimes": [
+    "2027-02-20 penumbral",
+    "2027-07-18 penumbral",
+    "2027-08-17 penumbral",
+    "2028-01-12 partial",
+    "2028-07-06 partial",
+    "2028-12-31 total"
+  ],
+  "eclipses": [
+    {
+      "greatestEclipseUtc": "2026-03-03T11:32:00Z",
+      "type": "total",
+      "umbralMagnitude": 1.1507,
+      "totalityMinutes": 58,
+      "note": "Total lunar eclipse — the Moon turns coppery red (a \"blood moon\")."
+    },
+    {
+      "greatestEclipseUtc": "2026-08-28T04:12:00Z",
+      "type": "partial",
+      "umbralMagnitude": 0.9319,
+      "totalityMinutes": 0,
+      "note": "Deep partial eclipse — 93% of the Moon enters Earth's umbra, so most of the disc darkens and reddens."
+    }
+  ]
+}
