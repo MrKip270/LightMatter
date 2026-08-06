@@ -6,7 +6,9 @@ passes, severe weather alerts, rare sky events (aurora, eclipses, naked-eye
 planets), and light-pollution data into a single "what's viewable right now"
 answer.
 
-See [`docs/PRD.md`](docs/PRD.md) for the full product spec.
+See [`docs/PRD.md`](docs/PRD.md) for the full product spec and
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's built, what's left, and what's
+optional.
 
 ## Status
 
@@ -201,25 +203,17 @@ by coordinates), combine them into a single comprehensive viewability
 score/report per location, then style the interface. Later: choosing a future
 date using predictive weather patterns.
 
-Next up:
+Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. **Test suite** — the combining logic in `routes/sky.js` is exported as pure
-   functions and has been exercised by ad-hoc scripts. Wire up a real runner and
-   convert those into proper tests. This is the PRD's primary seam.
-2. **Rare sky events** — naked-eye planets, comets and asteroids, full and
-   blood moons, and solar/lunar eclipses. Source still undecided: a hosted
-   astronomy API versus computing positions locally from an ephemeris. Would
-   make the "bright planets" target concrete (*which* planets, and where to
-   look) instead of a static threshold.
-3. **Severe weather alerts** and **satellite passes**, per the PRD.
-4. **Solar eclipses** — deferred deliberately. Unlike lunar eclipses, totality
-   follows a narrow ground track, so honest per-location reporting needs path
-   geometry rather than a date table.
-5. **More eclipse entries** — `backend/data/lunar-eclipses.json` lists known
-   2027–2028 dates whose times still need verifying against NASA's canon before
-   they're served.
-6. **Future dates** — `/api/moon` already accepts `?date=`. Open-Meteo returns
-   multi-day forecasts, so extending the cloud window is mostly a parameter
-   change.
+1. **A real test suite** — the highest-value item. Everything so far has been
+   verified with throwaway scripts, which caught three genuine bugs; without a
+   suite the next refactor silently reintroduces them.
+2. **Twilight handling** — the night window runs sunset→sunrise, but true dark
+   starts up to 90 minutes after sunset, so early evening currently looks better
+   than it is.
+3. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
+   would turn the static "bright planets" row into "Jupiter, southeast, 40° up".
+4. **Caching** — every search hits Open-Meteo twice and NOAA once.
+5. **The styling pass**, once the content has stopped moving.
 
 Styling stays deliberately minimal until the remaining data sources land.
