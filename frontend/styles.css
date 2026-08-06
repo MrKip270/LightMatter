@@ -160,6 +160,11 @@ body {
   font-size: 0.95rem;
 }
 
+.stars {
+  margin: 0.5rem 0 0.15rem;
+  font-size: 0.95rem;
+}
+
 .eclipse {
   margin-top: 0.5rem;
   padding: 0.4rem 0.6rem;

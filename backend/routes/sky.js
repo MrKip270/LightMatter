@@ -16,7 +16,10 @@
 const express = require("express");
 const { getAurora } = require("../sources/aurora");
 const { getClouds, helpers: cloudHelpers } = require("../sources/clouds");
-const { getLightPollution } = require("../sources/lightpollution");
+const {
+  getLightPollution,
+  helpers: lightHelpers,
+} = require("../sources/lightpollution");
 const { getMoon, effectiveSqm, helpers: moonHelpers } = require("../sources/moon");
 const { validateCoordinates } = require("./validate");
 
@@ -249,6 +252,37 @@ function computePotentialScore(lightPollution) {
   return scoreFrom(1, darknessFactor(baseline), 0);
 }
 
+// How many stars you can actually expect to see, tonight versus at this site's
+// best. This is the most concrete thing the whole report produces — "about 80
+// stars" lands in a way that "17.1 magnitudes per square arc-second" never will.
+//
+// Computed from the EFFECTIVE sky, so moonlight reduces the count exactly as
+// city glow does. Because star counts roughly triple per magnitude, a full moon
+// costing 2.5 magnitudes doesn't halve the count — it cuts it by around 90%.
+function buildStarEstimate(effectiveSky, baselineSqm) {
+  if (effectiveSky === null || effectiveSky === undefined) return null;
+
+  const tonightMag = lightHelpers.nakedEyeLimitingMagnitude(effectiveSky);
+  const tonightCount = lightHelpers.visibleStarCount(tonightMag);
+
+  const bestMag =
+    baselineSqm === null ? null : lightHelpers.nakedEyeLimitingMagnitude(baselineSqm);
+  const bestCount = bestMag === null ? null : lightHelpers.visibleStarCount(bestMag);
+
+  return {
+    // Faintest star visible tonight, and roughly how many that means.
+    limitingMagnitude: Number(tonightMag.toFixed(1)),
+    visibleTonight: tonightCount,
+    // Same, on a clear moonless night at this site.
+    bestLimitingMagnitude: bestMag === null ? null : Number(bestMag.toFixed(1)),
+    visibleAtBest: bestCount,
+    // For scale: a pristine sky (SQM 22) is the practical ceiling anywhere.
+    visibleUnderPristineSky: lightHelpers.visibleStarCount(
+      lightHelpers.nakedEyeLimitingMagnitude(22)
+    ),
+  };
+}
+
 // Short label for the potential score, describing the SITE rather than tonight.
 function describePotential(score) {
   if (score === null) return null;
@@ -453,6 +487,7 @@ function buildReport(clouds, lightPollution, aurora, moon, timeline) {
       effectiveSqm: effectiveSky === null ? null : Number(effectiveSky.toFixed(2)),
       moonPenaltyMagnitudes: Number(moonPenalty.toFixed(2)),
     },
+    stars: buildStarEstimate(effectiveSky, baseline),
     targets: [
       ...targetVerdicts(clouds, effectiveSky, moonPenalty),
       auroraVerdict(aurora, clouds, effectiveSky),
@@ -525,6 +560,7 @@ module.exports.helpers = {
   computeScore,
   computePotentialScore,
   describePotential,
+  buildStarEstimate,
   cloudCeiling,
   targetVerdicts,
   auroraVerdict,

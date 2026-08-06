@@ -56,6 +56,57 @@ function nakedEyeLimitingMagnitude(sqm) {
   return 7.93 - 5 * Math.log10(Math.pow(10, 4.316 - sqm / 5) + 1);
 }
 
+// Cumulative naked-eye star counts over the WHOLE celestial sphere, by limiting
+// magnitude. Standard astronomical figures — each step of one magnitude roughly
+// triples the count, which is why a small change in sky brightness produces a
+// dramatic change in how many stars you see.
+const STAR_COUNTS = [
+  [0, 4],
+  [1, 15],
+  [2, 48],
+  [3, 171],
+  [4, 513],
+  [5, 1602],
+  [6, 4800],
+  [6.5, 9100],
+  [7, 14000],
+];
+
+// Fraction of the whole-sky count actually visible at one moment. Half the
+// sphere is below the horizon, and atmospheric extinction near the horizon
+// costs another chunk — stars low in the sky are dimmed by the longer air path.
+// 0.30 calibrates against the commonly cited "about 2,500-3,000 stars visible to
+// the naked eye under ideal conditions."
+const VISIBLE_AT_ONCE_FRACTION = 0.3;
+
+// Estimated number of stars visible at once for a given limiting magnitude.
+//
+// Interpolated in LOG space, because star counts grow geometrically with
+// magnitude. Linear interpolation between 4,800 and 9,100 would badly
+// misestimate the middle.
+function visibleStarCount(limitingMagnitude) {
+  const m = Math.min(7, Math.max(0, limitingMagnitude));
+
+  let lower = STAR_COUNTS[0];
+  let upper = STAR_COUNTS[STAR_COUNTS.length - 1];
+  for (let i = 0; i < STAR_COUNTS.length - 1; i++) {
+    if (m >= STAR_COUNTS[i][0] && m <= STAR_COUNTS[i + 1][0]) {
+      lower = STAR_COUNTS[i];
+      upper = STAR_COUNTS[i + 1];
+      break;
+    }
+  }
+
+  const span = upper[0] - lower[0];
+  const t = span === 0 ? 0 : (m - lower[0]) / span;
+  const whole = Math.pow(
+    10,
+    Math.log10(lower[1]) + t * (Math.log10(upper[1]) - Math.log10(lower[1]))
+  );
+
+  return Math.round(whole * VISIBLE_AT_ONCE_FRACTION);
+}
+
 // Plain-language description. Deliberately NOT the Bortle scale: Bortle is a
 // subjective whole-sky visual assessment, while this dataset models brightness
 // at the zenith only. Both the atlas authors and David Lorenz explicitly ask
@@ -153,8 +204,11 @@ module.exports = {
   getLightPollution,
   helpers: {
     nakedEyeLimitingMagnitude,
+    visibleStarCount,
     describeSky,
     visibilityNote,
     NATURAL_MCD,
+    STAR_COUNTS,
+    VISIBLE_AT_ONCE_FRACTION,
   },
 };

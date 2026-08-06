@@ -310,6 +310,33 @@ function renderSummary(data) {
       }</p>`
     : `<p class="window muted">No usable window tonight.</p>`;
 
+  // The most concrete line in the report. "About 66 stars" means something to
+  // anyone; "17.15 mag/arcsec²" means something to almost no one.
+  let starsLine = "";
+  if (data.stars) {
+    const s = data.stars;
+    const lost =
+      s.visibleAtBest && s.visibleAtBest > s.visibleTonight
+        ? Math.round(100 * (1 - s.visibleTonight / s.visibleAtBest))
+        : 0;
+
+    // Star counts grow geometrically with limiting magnitude, so even a modest
+    // brightening removes a startling share of them. Worth stating outright.
+    const lostNote =
+      lost >= 15
+        ? ` — about ${lost}% fewer than this site's best of ${s.visibleAtBest.toLocaleString()}`
+        : "";
+
+    starsLine = `
+      <p class="stars">
+        <strong>~${s.visibleTonight.toLocaleString()} stars</strong> visible tonight,
+        down to magnitude ${s.limitingMagnitude}${lostNote}.
+      </p>
+      <p class="detail muted">For scale, a perfectly dark sky anywhere on Earth
+        shows about ${s.visibleUnderPristineSky.toLocaleString()}.</p>
+    `;
+  }
+
   // Only mention the moon penalty when it's actually doing damage. Showing
   // "0.01 magnitudes" would be noise.
   const moonLine =
@@ -335,6 +362,7 @@ function renderSummary(data) {
       ${scoreBlock}
       <p class="headline">${escapeHtml(data.headline)}</p>
       ${window}
+      ${starsLine}
       ${moonLine}
       <ul class="targets">${targets}</ul>
     </div>
