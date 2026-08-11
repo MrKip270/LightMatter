@@ -16,13 +16,17 @@ product spec and the reasoning behind decisions already made.
 | Cloud cover | `/api/clouds` | Tonight's window, sunset→sunrise, best clear run |
 | Light pollution | `/api/lightpollution` | Falchi 2015 atlas, 7 km grid, local |
 | Moon | `/api/moon` | Phase, altitude, rise/set, next new/full, lunar eclipses |
+| Reverse geocoding | `/api/reverse-geocode` | Nominatim proxy, throttled + cached |
 | Combined report | `/api/sky` | Two scores, best window, star estimate, target ladder |
+| Map picker | — | Leaflet + OSM, lazy-loaded, click to choose a location |
+| Test suite | — | 92 tests, `npm test`, no dependencies |
 
 ---
 
 ## Tier 1 — Needed before this is trustworthy
 
-**1. A real test suite.** The highest-value item on this list. `routes/sky.js`
+**1. ~~A real test suite.~~ DONE — 92 tests, `npm test`.** Kept here for the
+reasoning, which still applies to everything added from now on. `routes/sky.js`
 exports its combining logic as pure functions and every source exports its
 helpers, but everything so far has been verified with throwaway scripts. Three
 real bugs were caught that way (a "next full moon" in the past, a score reporting
@@ -103,7 +107,16 @@ question than "how is it here?"
 
 **15. Find the nearest dark site.** Search the light pollution grid outward for
 the closest cell above a target SQM. The data is already in memory; this is a
-search problem, not a data problem.
+search problem, not a data problem. Now considerably more compelling with a map
+to display the answer on.
+
+**15b. Light pollution overlay on the map.** Deferred when the map was built, to
+keep that change reviewable. Two routes: extend `tools/build-lightpollution.js`
+to emit a colour-coded world PNG alongside the `.bin` and drop it on as a fixed
+`L.imageOverlay` (simple, adds a few MB to the repo), or serve rendered PNG
+tiles from the in-memory grid at any zoom (sharper, no repo weight, needs a PNG
+encoder and tile maths). Probably the single most visually compelling feature
+left, since the data is already owned and loaded.
 
 **16. Hourly forecast chart.** `/api/sky` already returns a full `timeline` with
 per-hour cloud cover, moon altitude, and effective SQM. Nothing renders it yet —
@@ -143,10 +156,11 @@ social features.
 
 ## Suggested order
 
-1. Tests (Tier 1.1) — everything below is safer afterwards
+1. ~~Tests~~ — done
 2. Twilight handling (4.17) — small fix, real accuracy gain
-3. Severe weather (2.4) — completes a PRD story, no key needed
-4. Hourly chart (4.16) — data already exists, pure frontend
-5. Planets via ephemeris (2.6) — biggest single upgrade to the report
-6. Caching (1.3) — before anyone else uses it
-7. Styling pass (5.18) — once the content has stopped moving
+3. Light pollution overlay on the map (4.15b) — highest visual payoff, data already owned
+4. Severe weather (2.4) — completes a PRD story, no key needed
+5. Hourly chart (4.16) — data already exists, pure frontend
+6. Planets via ephemeris (2.6) — biggest single upgrade to the report
+7. Caching (1.3) — before anyone else uses it
+8. Styling pass (5.18) — once the content has stopped moving

@@ -15,8 +15,10 @@ optional.
 Early development, built step by step as a learning project. Working today:
 
 - **Location input** — search by city name (with an autocomplete dropdown of
-  real, resolvable places), enter raw `(lat, lon)` coordinates, or use the
-  browser's "use my location" (GPS).
+  real, resolvable places), enter raw `(lat, lon)` coordinates, use the
+  browser's "use my location" (GPS), or **pick a point on a map**. The map is
+  collapsed by default and loads Leaflet only when opened, so visitors who never
+  use it never download it.
 - **Aurora** — live aurora probability for any location, from NOAA SWPC.
 - **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
   the hours between local sunset and sunrise and reduced to a plain-language
@@ -82,7 +84,8 @@ LightMatter/
 │   │   ├── aurora.js        #   getAurora(lat, lon)
 │   │   ├── clouds.js        #   getClouds(lat, lon)
 │   │   ├── lightpollution.js#   getLightPollution(lat, lon)
-│   │   └── moon.js          #   getMoon(lat, lon, date) — local, no network
+│   │   ├── moon.js          #   getMoon(lat, lon, date) — local, no network
+│   │   └── reversegeocode.js#   reverseGeocode(lat, lon) — Nominatim proxy
 │   ├── routes/              # HTTP WRAPPERS — validate, call a source, set status
 │   │   ├── validate.js      #   shared lat/lon validation
 │   │   ├── geocode.js
@@ -90,6 +93,7 @@ LightMatter/
 │   │   ├── clouds.js
 │   │   ├── lightpollution.js
 │   │   ├── moon.js
+│   │   ├── reversegeocode.js
 │   │   └── sky.js           #   combines all sources into one verdict
 │   └── data/
 │       ├── lightpollution.bin  # preprocessed grid (built by tools/, committed)
@@ -128,6 +132,10 @@ Then open **http://localhost:3000** in your browser.
 - `GET /api/sky?lat=<lat>&lon=<lon>` — **the main endpoint.** Returns a 0–100
   score, a headline, per-target verdicts, and the raw payload from every source.
 - `GET /api/geocode?q=<place>` — returns matching places with coordinates.
+- `GET /api/reverse-geocode?lat=<lat>&lon=<lon>` — coordinates to a place name,
+  for the map picker. Always responds `200`: a naming failure returns
+  `label: null` rather than an error, because the sky report only needs
+  coordinates and shouldn't break over a cosmetic lookup.
 - `GET /api/aurora?lat=<lat>&lon=<lon>` — returns aurora probability for a point.
 - `GET /api/clouds?lat=<lat>&lon=<lon>` — returns tonight's cloud cover for a
   point: verdict, average cover, clearest hour, longest clear stretch, and the
@@ -175,6 +183,10 @@ Chicago drifts 0.01 mag; Tromsø — a small city ringed by dark fjords — drif
 - **Open-Meteo Forecast** — hourly cloud cover, sunrise/sunset (no key). *In use.*
 - **suncalc** — moon phase, position, rise/set, computed locally from Meeus'
   *Astronomical Algorithms*. No network, no key. *In use.*
+- **OpenStreetMap Nominatim** — reverse geocoding for the map picker (no key).
+  *In use.* Rate limited to 1 request/second and cached server-side.
+- **OpenStreetMap tiles + Leaflet 1.9.4** — the map itself (no key). *In use.*
+  Loaded from CDN on first open only.
 - **NASA/GSFC Five Millennium Canon of Lunar Eclipses** — eclipse times, static
   table. *In use.*
 - **World Atlas of Artificial Night Sky Brightness** — light pollution, static
@@ -195,6 +207,13 @@ newer dataset can be dropped in without touching code.
 Data vintage is 2014–2015. Light pollution has generally increased since, so real
 skies are typically somewhat brighter than reported; responses include
 `dataYear` so the UI can say so.
+
+Map tiles and reverse geocoding come from **OpenStreetMap**, whose tile usage
+policy requires visible `© OpenStreetMap contributors` attribution (rendered by
+Leaflet, bottom-right) and a User-Agent identifying the application. Both are in
+place. OSM's public tile server is fine for a project this size but is not
+intended for high-traffic production — a deployment with real users should move
+to a dedicated tile provider.
 
 ## Roadmap (high level)
 
