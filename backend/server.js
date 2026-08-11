@@ -12,6 +12,7 @@ const auroraRoute = require("./routes/aurora");
 const cloudsRoute = require("./routes/clouds");
 const lightPollutionRoute = require("./routes/lightpollution");
 const moonRoute = require("./routes/moon");
+const reverseGeocodeRoute = require("./routes/reversegeocode");
 const skyRoute = require("./routes/sky");
 
 // 4. Create the Express application.
@@ -28,6 +29,7 @@ const PORT = process.env.PORT || 3000;
 //    /api/sky     -> ALL of the above, combined into one verdict
 //    Future sources (satellites, sky events) line up here the same way.
 app.use("/api/geocode", geocodeRoute);
+app.use("/api/reverse-geocode", reverseGeocodeRoute);
 app.use("/api/aurora", auroraRoute);
 app.use("/api/clouds", cloudsRoute);
 app.use("/api/lightpollution", lightPollutionRoute);
