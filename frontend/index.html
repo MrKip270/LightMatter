@@ -24,7 +24,18 @@
       </div>
       <button type="submit">Search</button>
       <button type="button" id="locate-btn">Use my location</button>
+      <button type="button" id="map-btn" aria-expanded="false" aria-controls="map-panel">
+        Pick on map
+      </button>
     </form>
+
+    <!-- The map panel. Empty until the button is pressed: Leaflet's script,
+         stylesheet, and map tiles are all loaded on first open, so visitors who
+         never use the map never download any of it. -->
+    <section id="map-panel" class="map-panel" hidden>
+      <p class="detail muted">Click anywhere to check the sky there.</p>
+      <div id="map"></div>
+    </section>
 
     <!-- Short status/error messages appear here. -->
     <p id="status" class="status"></p>

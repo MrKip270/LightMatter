@@ -533,6 +533,135 @@ async function fetchSuggestions(query) {
   }
 }
 
+// --- 5c. Map picker: click a point to use it as the location. ---
+
+const mapBtn = document.getElementById("map-btn");
+const mapPanel = document.getElementById("map-panel");
+
+const LEAFLET_VERSION = "1.9.4";
+const LEAFLET_CSS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`;
+const LEAFLET_JS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`;
+
+let mapInstance = null;
+let mapMarker = null;
+let leafletLoading = null;
+
+// Load a stylesheet or script and resolve once the browser reports it ready.
+// Wrapping the callback-based load events in a Promise lets the caller use
+// plain await instead of nesting onload handlers.
+function loadAsset(tag, attributes) {
+  return new Promise((resolve, reject) => {
+    const element = document.createElement(tag);
+    Object.assign(element, attributes);
+    element.onload = () => resolve();
+    element.onerror = () => reject(new Error(`Could not load ${attributes.src || attributes.href}`));
+    document.head.appendChild(element);
+  });
+}
+
+// Fetch Leaflet once, on first use.
+//
+// The promise itself is cached rather than a boolean flag. If someone taps the
+// button twice in quick succession, both calls await the SAME in-flight load
+// instead of starting a second one — a small race that would otherwise
+// initialise the map twice.
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoading) return leafletLoading;
+
+  leafletLoading = Promise.all([
+    loadAsset("link", { rel: "stylesheet", href: LEAFLET_CSS }),
+    loadAsset("script", { src: LEAFLET_JS }),
+  ]);
+
+  return leafletLoading;
+}
+
+// Ask our backend what a coordinate is called. Purely cosmetic: if it fails or
+// the spot has no name (open ocean, wilderness), we show coordinates instead.
+async function labelForCoords(lat, lon) {
+  const fallback = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+  try {
+    const data = await fetchJson(
+      `/api/reverse-geocode?lat=${lat}&lon=${lon}`
+    );
+    return data.label || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function handleMapClick(lat, lon) {
+  // Move the marker immediately. Waiting for the name first would leave the map
+  // feeling unresponsive for the second or so Nominatim can take.
+  if (mapMarker) {
+    mapMarker.setLatLng([lat, lon]);
+  } else {
+    mapMarker = window.L.marker([lat, lon]).addTo(mapInstance);
+  }
+
+  const rough = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+  placeInput.value = rough;
+  setStatus(`Checking the sky for ${rough}...`);
+
+  // Start both at once: the sky report does not depend on the place name, so
+  // making it wait for one would be pure added latency.
+  const [label] = await Promise.all([
+    labelForCoords(lat, lon),
+    showSkyReportForCoords(lat, lon, rough),
+  ]);
+
+  // Then upgrade the heading and the search box to the friendly name.
+  placeInput.value = label;
+  const heading = resultsEl.querySelector("h2");
+  if (heading) heading.textContent = label;
+}
+
+async function initMap() {
+  await loadLeaflet();
+
+  mapInstance = window.L.map("map").setView([39.5, -98.35], 4); // continental US
+
+  // OSM's tile policy requires this attribution to be visible and not hidden
+  // behind a toggle. Leaflet renders it bottom-right by default.
+  window.L.tileLayer(`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`, {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(mapInstance);
+
+  mapInstance.on("click", (event) => {
+    handleMapClick(event.latlng.lat, event.latlng.lng);
+  });
+}
+
+async function toggleMap() {
+  const opening = mapPanel.hidden;
+  mapPanel.hidden = !opening;
+  mapBtn.setAttribute("aria-expanded", String(opening));
+  mapBtn.textContent = opening ? "Hide map" : "Pick on map";
+
+  if (!opening) return;
+
+  if (!mapInstance) {
+    setStatus("Loading map...");
+    try {
+      await initMap();
+      setStatus("");
+    } catch (err) {
+      setStatus(`Could not load the map: ${err.message}`);
+      mapPanel.hidden = true;
+      mapBtn.setAttribute("aria-expanded", "false");
+      mapBtn.textContent = "Pick on map";
+      return;
+    }
+  }
+
+  // Leaflet measures its container on creation. If the panel was hidden at that
+  // moment the map believes it is 0x0 and renders a grey box with tiles in the
+  // wrong place. invalidateSize() re-measures now that the panel is visible.
+  mapInstance.invalidateSize();
+}
+
 // --- 6. Wire up the events. ---
 
 // Submitting the form (Search button OR pressing Enter).
@@ -544,6 +673,9 @@ form.addEventListener("submit", (event) => {
 
 // Clicking "Use my location".
 locateBtn.addEventListener("click", useMyLocation);
+
+// Opening and closing the map picker.
+mapBtn.addEventListener("click", toggleMap);
 
 // As the user types, fetch suggestions — debounced so we don't spam the
 // server. Skip it when the box is empty or already holds coordinates.

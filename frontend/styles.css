@@ -42,6 +42,31 @@ body {
   display: none;
 }
 
+/* --- Map picker ----------------------------------------------------------- */
+
+.map-panel {
+  margin-top: 1rem;
+  max-width: 34rem;
+}
+
+.map-panel[hidden] {
+  display: none;
+}
+
+/* Leaflet needs an explicit height: its container has no intrinsic size, so
+   without this the map collapses to zero pixels and renders nothing. */
+#map {
+  height: 22rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+@media (max-width: 30rem) {
+  #map {
+    height: 16rem;
+  }
+}
+
 /* Result cards — one per data source. Functional only; the real theme comes
    after all the sources exist (see the PRD: build the machine, then style it). */
 .results {
