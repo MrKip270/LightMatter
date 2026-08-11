@@ -41,7 +41,14 @@ intended workflow.
 | `moon.test.js` | Phase physics, moonlight model, phase-finding invariants, eclipses |
 | `lightpollution.test.js` | Limiting magnitude, star counts, grid lookup |
 | `sky.test.js` | Scoring, both score types, target verdicts, best window, degradation |
+| `reversegeocode.test.js` | Label building, User-Agent policy, throttling, caching |
+| `coords.test.js` | Longitude wrapping, latitude clamping, typed-coordinate parsing |
 | `routes.test.js` | Status codes, validation, response shape, per-source degradation |
+
+`frontend/coords.js` holds the pure coordinate maths precisely so Node can
+`require()` it. `app.js` cannot be tested this way — it calls
+`document.getElementById` at load time, which throws outside a browser.
+Splitting the pure functions out is what makes them coverable at all.
 
 External APIs are mocked in `routes.test.js` with responses captured from the
 real services. Per the PRD, real API calls are exercised manually instead — the
@@ -144,3 +151,10 @@ Written down because they are the argument for the suite existing.
    a cycle ahead" discarded legitimate near-term answers — asked on 1 August for
    the next new moon, genuinely 11 days out, it replied 41 days. Found by the
    same property test, which is the point of keeping them.
+
+6. **Map clicks failed after panning past the dateline.** Leaflet renders
+   repeated copies of the world and reports the longitude of the copy you
+   clicked, so panning east gave 190, 550, 910 — every one rejected by the API's
+   -180..180 validation. Found by using the map, not by the suite; the
+   regression test came afterwards. A reminder that a green suite is evidence
+   about the paths you thought to cover, not proof of correctness.

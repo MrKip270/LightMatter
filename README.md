@@ -101,7 +101,8 @@ LightMatter/
 ├── frontend/
 │   ├── index.html           # page markup
 │   ├── styles.css           # styling
-│   └── app.js               # location input, autocomplete, fetch + render
+│   ├── coords.js            # pure coordinate maths — no DOM, so it's testable
+│   └── app.js               # location input, autocomplete, map, fetch + render
 ├── tools/                   # one-off dev scripts, not part of the server
 │   ├── inspect-atlas.js     #   print GeoTIFF header + probe pixels
 │   └── build-lightpollution.js  # downsample the atlas into backend/data/
