@@ -44,6 +44,10 @@
     <section id="results" class="results" hidden></section>
   </main>
 
+  <!-- Pure coordinate helpers, loaded first so app.js can use them.
+       Kept separate because they have no DOM dependencies, which lets the
+       Node test suite require() and cover them. -->
+  <script src="coords.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

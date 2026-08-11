@@ -30,31 +30,9 @@ function verdict(probability) {
   return "None expected";
 }
 
-// Try to read "(lat, lon)" coordinates out of the text.
-// Returns { lat, lon } if the input contains valid parentheses coordinates,
-// or null if it doesn't (meaning we should treat it as a city name instead).
-function parseCoordinates(text) {
-  // Regex breakdown:
-  //   \(              a literal "("
-  //   \s*             optional spaces
-  //   (-?\d+(?:\.\d+)?)  a number: optional "-", digits, optional ".decimals"
-  //   \s*,\s*         a comma with optional spaces around it
-  //   (-?\d+(?:\.\d+)?)  the second number
-  //   \)              a literal ")"
-  const match = text.match(
-    /\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/
-  );
-  if (!match) return null;
-
-  // match[1] and match[2] are the two captured numbers (as strings).
-  const lat = Number(match[1]);
-  const lon = Number(match[2]);
-
-  // Reject impossible coordinates.
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-
-  return { lat, lon };
-}
+// parseCoordinates and normalizeCoords come from coords.js, loaded before this
+// file. They live there because they are pure functions with no DOM access,
+// which is what lets the Node test suite cover them.
 
 // Decide what the user meant: coordinates or a city name.
 function handleSearch(text) {
@@ -591,13 +569,23 @@ async function labelForCoords(lat, lon) {
   }
 }
 
-async function handleMapClick(lat, lon) {
+async function handleMapClick(rawLat, rawLon) {
+  // Leaflet reports the longitude of whichever WORLD COPY was clicked, so
+  // panning east past the dateline yields 190, 480, 730 — all the same place,
+  // but all rejected by our API's -180..180 validation. Wrap before doing
+  // anything else.
+  //
+  // The marker is placed at the RAW coordinates so it stays under the cursor
+  // on whichever copy of the world you clicked; only the values we send onward
+  // are normalized.
+  const { lat, lon } = normalizeCoords(rawLat, rawLon);
+
   // Move the marker immediately. Waiting for the name first would leave the map
   // feeling unresponsive for the second or so Nominatim can take.
   if (mapMarker) {
-    mapMarker.setLatLng([lat, lon]);
+    mapMarker.setLatLng([rawLat, rawLon]);
   } else {
-    mapMarker = window.L.marker([lat, lon]).addTo(mapInstance);
+    mapMarker = window.L.marker([rawLat, rawLon]).addTo(mapInstance);
   }
 
   const rough = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
