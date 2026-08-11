@@ -97,6 +97,24 @@ function nextPhaseAfter(from, target) {
     return Math.min(raw, 1 - raw);
   };
 
+  // Ternary search for the minimum distance within +/- 1.5 days of a guess.
+  // The moon's real motion deviates from the mean cycle by up to about half a
+  // day, so the window has to be generous.
+  const refine = (centerMs) => {
+    const WINDOW_MS = 1.5 * 24 * 60 * 60 * 1000;
+    let low = centerMs - WINDOW_MS;
+    let high = centerMs + WINDOW_MS;
+
+    for (let i = 0; i < 60; i++) {
+      const third = (high - low) / 3;
+      const a = new Date(low + third);
+      const b = new Date(high - third);
+      if (distance(a) < distance(b)) high = b.getTime();
+      else low = a.getTime();
+    }
+    return new Date((low + high) / 2);
+  };
+
   const currentPhase = suncalc.getMoonIllumination(from).phase;
 
   // How much of a cycle remains until the target comes round again.
@@ -104,23 +122,33 @@ function nextPhaseAfter(from, target) {
   // If we are essentially on it right now, we want the NEXT one, not this one.
   if (cyclesAhead < 0.01) cyclesAhead += 1;
 
-  const estimate = from.getTime() + cyclesAhead * SYNODIC_MONTH_MS;
+  let result = refine(from.getTime() + cyclesAhead * SYNODIC_MONTH_MS);
 
-  // Refine within a generous window — the moon's actual motion deviates from
-  // the mean cycle by up to about half a day.
-  const WINDOW_MS = 1.5 * 24 * 60 * 60 * 1000;
-  let low = estimate - WINDOW_MS;
-  let high = estimate + WINDOW_MS;
-
-  for (let i = 0; i < 60; i++) {
-    const third = (high - low) / 3;
-    const a = new Date(low + third);
-    const b = new Date(high - third);
-    if (distance(a) < distance(b)) high = b.getTime();
-    else low = a.getTime();
+  // suncalc's phase does not always reach the target value exactly — near full
+  // moon it can peak a little short (0.4863 rather than 0.5000). Asked for the
+  // next occurrence FROM such a moment, `cyclesAhead` computes as a few hours
+  // instead of a full cycle, and the refinement lands back on the cycle we are
+  // already standing in.
+  //
+  // The test is "did we land back on the moment we started from", with a small
+  // tolerance rather than a strict `<= from`. Refinement can settle a few
+  // milliseconds past the starting instant, which a strict comparison waves
+  // through and which then reports consecutive new moons zero days apart.
+  //
+  // The tolerance must stay SMALL. An earlier attempt used half a synodic month
+  // — reasoning that consecutive occurrences are ~29.5 days apart — but that
+  // discards legitimate near-term answers: asked on 1 August for the next new
+  // moon, genuinely 11 days away, it skipped a cycle and replied 41 days. The
+  // gap to the NEXT occurrence is ~29.5 days; the gap from an arbitrary
+  // starting point is anything from zero to 29.5.
+  //
+  // Both bugs were found by property tests, and the second was introduced by
+  // the fix for the first.
+  const LANDED_ON_START_MS = 60 * 60 * 1000; // 1 hour
+  if (result.getTime() - from.getTime() < LANDED_ON_START_MS) {
+    result = refine(result.getTime() + SYNODIC_MONTH_MS);
   }
 
-  const result = new Date((low + high) / 2);
   return result.getTime() > from.getTime() ? result : null;
 }
 
