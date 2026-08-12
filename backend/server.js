@@ -11,6 +11,7 @@ const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
 const cloudsRoute = require("./routes/clouds");
 const lightPollutionRoute = require("./routes/lightpollution");
+const lightPollutionTilesRoute = require("./routes/lightpollutiontiles");
 const moonRoute = require("./routes/moon");
 const reverseGeocodeRoute = require("./routes/reversegeocode");
 const skyRoute = require("./routes/sky");
@@ -32,6 +33,10 @@ app.use("/api/geocode", geocodeRoute);
 app.use("/api/reverse-geocode", reverseGeocodeRoute);
 app.use("/api/aurora", auroraRoute);
 app.use("/api/clouds", cloudsRoute);
+// Mounted BEFORE /api/lightpollution so the more specific tile paths match
+// first. Express matches top to bottom, and the point-lookup route would
+// otherwise swallow /tile/... as a query with no coordinates.
+app.use("/api/lightpollution/tile", lightPollutionTilesRoute);
 app.use("/api/lightpollution", lightPollutionRoute);
 app.use("/api/moon", moonRoute);
 app.use("/api/sky", skyRoute);
