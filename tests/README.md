@@ -41,6 +41,7 @@ intended workflow.
 | `moon.test.js` | Phase physics, moonlight model, phase-finding invariants, eclipses |
 | `lightpollution.test.js` | Limiting magnitude, star counts, grid lookup |
 | `sky.test.js` | Scoring, both score types, target verdicts, best window, degradation |
+| `lightpollutiontiles.test.js` | Slippy-map projection, palette, PNG rendering, tile route |
 | `reversegeocode.test.js` | Label building, User-Agent policy, throttling, caching |
 | `coords.test.js` | Longitude wrapping, latitude clamping, typed-coordinate parsing |
 | `routes.test.js` | Status codes, validation, response shape, per-source degradation |
@@ -80,6 +81,13 @@ all three describe real failures from this project.
 **5. Degradation tests** — what happens when a source is missing or an upstream
 is down. The PRD requires one dead source not to break the page; that is only
 true if it's asserted.
+
+**6. Documented-limitation tests** — pin a known flaw so nobody "fixes" it by
+accident and so the tradeoff stays visible. `lightpollutiontiles.test.js`
+asserts that the classic rainbow palette is *not* perceptually uniform, because
+that was a deliberate choice (comparability with reference maps) rather than an
+oversight. A test that fails when someone silently switches palettes is more
+useful than a comment nobody reads.
 
 ## Calibration anchors
 

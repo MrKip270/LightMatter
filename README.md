@@ -18,7 +18,8 @@ Early development, built step by step as a learning project. Working today:
   real, resolvable places), enter raw `(lat, lon)` coordinates, use the
   browser's "use my location" (GPS), or **pick a point on a map**. The map is
   collapsed by default and loads Leaflet only when opened, so visitors who never
-  use it never download it.
+  use it never download it. It carries a **light pollution overlay** rendered
+  from our own grid, with an opacity slider and a colour key.
 - **Aurora** — live aurora probability for any location, from NOAA SWPC.
 - **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
   the hours between local sunset and sunrise and reduced to a plain-language
@@ -83,7 +84,9 @@ LightMatter/
 │   ├── sources/             # DATA LOGIC — no Express, no req/res
 │   │   ├── aurora.js        #   getAurora(lat, lon)
 │   │   ├── clouds.js        #   getClouds(lat, lon)
-│   │   ├── lightpollution.js#   getLightPollution(lat, lon)
+│   │   ├── lightpollutiongrid.js # loads the grid once, shared by both below
+│   │   ├── lightpollution.js#   getLightPollution(lat, lon) — point lookup
+│   │   ├── lightpollutiontiles.js # renders PNG map tiles from the grid
 │   │   ├── moon.js          #   getMoon(lat, lon, date) — local, no network
 │   │   └── reversegeocode.js#   reverseGeocode(lat, lon) — Nominatim proxy
 │   ├── routes/              # HTTP WRAPPERS — validate, call a source, set status
@@ -147,6 +150,12 @@ Then open **http://localhost:3000** in your browser.
 - `GET /api/moon?lat=<lat>&lon=<lon>[&date=YYYY-MM-DD]` — phase, illumination,
   altitude, rise/set, next new/full moon, and any upcoming lunar eclipse with
   per-location visibility. Accepts any date, past or future.
+- `GET /api/lightpollution/tile/:z/:x/:y.png` — a 256×256 map tile rendered from
+  the light pollution grid, in the standard slippy-map scheme. Native resolution
+  stops at zoom 8 (the grid is ~7 km per cell); Leaflet upscales beyond that
+  rather than inventing detail.
+- `GET /api/lightpollution/tile/legend` — the palette stops, generated from the
+  same table the tiles use so the key cannot drift from the map.
 - `GET /api/lightpollution?lat=<lat>&lon=<lon>` — returns SQM, a plain-language
   sky description, and naked-eye limiting magnitude. Responds `503` if the grid
   hasn't been built yet, `200` with `dataAvailable: false` outside the atlas

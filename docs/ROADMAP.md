@@ -19,7 +19,8 @@ product spec and the reasoning behind decisions already made.
 | Reverse geocoding | `/api/reverse-geocode` | Nominatim proxy, throttled + cached |
 | Combined report | `/api/sky` | Two scores, best window, star estimate, target ladder |
 | Map picker | — | Leaflet + OSM, lazy-loaded, click to choose a location |
-| Test suite | — | 92 tests, `npm test`, no dependencies |
+| Light pollution overlay | `/api/lightpollution/tile/...` | Server-rendered PNG tiles, opacity slider, legend |
+| Test suite | — | 118 tests, `npm test`, no dependencies |
 
 ---
 
@@ -110,13 +111,10 @@ the closest cell above a target SQM. The data is already in memory; this is a
 search problem, not a data problem. Now considerably more compelling with a map
 to display the answer on.
 
-**15b. Light pollution overlay on the map.** Deferred when the map was built, to
-keep that change reviewable. Two routes: extend `tools/build-lightpollution.js`
-to emit a colour-coded world PNG alongside the `.bin` and drop it on as a fixed
-`L.imageOverlay` (simple, adds a few MB to the repo), or serve rendered PNG
-tiles from the in-memory grid at any zoom (sharper, no repo weight, needs a PNG
-encoder and tile maths). Probably the single most visually compelling feature
-left, since the data is already owned and loaded.
+**15b. ~~Light pollution overlay on the map.~~ DONE.** Built as server-rendered
+PNG tiles. The `L.imageOverlay` alternative was rejected on inspection: the grid
+is EPSG:4326 and Leaflet is EPSG:3857, so a linear corner-to-corner overlay
+would misplace high latitudes by hundreds of kilometres.
 
 **16. Hourly forecast chart.** `/api/sky` already returns a full `timeline` with
 per-hour cloud cover, moon altitude, and effective SQM. Nothing renders it yet —
@@ -157,10 +155,11 @@ social features.
 ## Suggested order
 
 1. ~~Tests~~ — done
-2. Twilight handling (4.17) — small fix, real accuracy gain
-3. Light pollution overlay on the map (4.15b) — highest visual payoff, data already owned
-4. Severe weather (2.4) — completes a PRD story, no key needed
-5. Hourly chart (4.16) — data already exists, pure frontend
-6. Planets via ephemeris (2.6) — biggest single upgrade to the report
-7. Caching (1.3) — before anyone else uses it
-8. Styling pass (5.18) — once the content has stopped moving
+2. ~~Light pollution overlay~~ — done
+3. Twilight handling (4.17) — small fix, real accuracy gain
+4. Find nearest dark site (4.15) — the grid is loaded and there's now a map to show the answer on
+5. Severe weather (2.4) — completes a PRD story, no key needed
+6. Hourly chart (4.16) — data already exists, pure frontend
+7. Planets via ephemeris (2.6) — biggest single upgrade to the report
+8. Caching (1.3) — before anyone else uses it
+9. Styling pass (5.18) — once the content has stopped moving
