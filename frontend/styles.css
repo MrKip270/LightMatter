@@ -53,12 +53,63 @@ body {
   display: none;
 }
 
+.map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+#overlay-opacity {
+  width: 8rem;
+}
+
 /* Leaflet needs an explicit height: its container has no intrinsic size, so
    without this the map collapses to zero pixels and renders nothing. */
 #map {
   height: 22rem;
   border: 1px solid #ccc;
   border-radius: 6px;
+}
+
+/* Colour key. Reads darkest-first, matching how the question is asked:
+   "where is it good?" rather than "where is it bad?" */
+.legend {
+  margin-top: 0.5rem;
+}
+
+.legend[hidden] {
+  display: none;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.3rem;
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.swatch-colour {
+  width: 1.1rem;
+  height: 0.7rem;
+  border: 1px solid #999;
+  border-radius: 2px;
+  display: inline-block;
 }
 
 @media (max-width: 30rem) {

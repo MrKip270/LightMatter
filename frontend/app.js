@@ -515,6 +515,11 @@ async function fetchSuggestions(query) {
 
 const mapBtn = document.getElementById("map-btn");
 const mapPanel = document.getElementById("map-panel");
+const overlayToggle = document.getElementById("overlay-toggle");
+const opacityInput = document.getElementById("overlay-opacity");
+const legendEl = document.getElementById("legend");
+
+let overlayLayer = null;
 
 const LEAFLET_VERSION = "1.9.4";
 const LEAFLET_CSS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`;
@@ -605,6 +610,40 @@ async function handleMapClick(rawLat, rawLon) {
   if (heading) heading.textContent = label;
 }
 
+// Build the colour key from the server's palette, so the legend and the tiles
+// are guaranteed to describe the same thing.
+async function buildLegend() {
+  try {
+    const data = await fetchJson("/api/lightpollution/tile/legend");
+
+    // Reverse so the key reads darkest-first, matching how people think about
+    // it ("where is it good?") rather than how the palette is stored.
+    const swatches = [...data.stops]
+      .reverse()
+      .map(
+        (stop) => `
+        <span class="swatch">
+          <span class="swatch-colour" style="background:${escapeHtml(stop.colour)}"></span>
+          ${stop.sqm.toFixed(1)}
+        </span>`
+      )
+      .join("");
+
+    legendEl.innerHTML = `
+      <div class="swatches">${swatches}</div>
+      <p class="detail muted">
+        Sky brightness (mag/arcsec²) — higher is darker.
+        ${escapeHtml(data.source)} — ${escapeHtml(data.license)}.
+        Below ~7 km the data is upscaled, not sharper.
+      </p>
+    `;
+    legendEl.hidden = false;
+  } catch {
+    // A missing legend is cosmetic; the map still works without it.
+    legendEl.hidden = true;
+  }
+}
+
 async function initMap() {
   await loadLeaflet();
 
@@ -617,9 +656,28 @@ async function initMap() {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(mapInstance);
 
+  // Our own tiles, rendered from the light pollution grid.
+  //
+  // maxNativeZoom matters here. The grid is ~7 km per cell, so past zoom 8 a
+  // tile would just be the same few cells blown up. Telling Leaflet the native
+  // limit makes it stop requesting new tiles and upscale the last real ones
+  // instead — the map goes visibly soft rather than inventing crisp detail that
+  // the data does not support. Honest, and it saves pointless work.
+  overlayLayer = window.L.tileLayer("/api/lightpollution/tile/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    maxNativeZoom: 8,
+    opacity: Number(opacityInput.value) / 100,
+    attribution:
+      'Light pollution: <a href="https://doi.org/10.5880/GFZ.1.4.2016.001">Falchi et al. 2016</a> (CC BY-NC 4.0)',
+  });
+
+  if (overlayToggle.checked) overlayLayer.addTo(mapInstance);
+
   mapInstance.on("click", (event) => {
     handleMapClick(event.latlng.lat, event.latlng.lng);
   });
+
+  buildLegend();
 }
 
 async function toggleMap() {
@@ -664,6 +722,27 @@ locateBtn.addEventListener("click", useMyLocation);
 
 // Opening and closing the map picker.
 mapBtn.addEventListener("click", toggleMap);
+
+// Overlay on/off. Guarded because these fire before the map is built if someone
+// touches the controls in the moment between opening the panel and Leaflet
+// finishing its load.
+overlayToggle.addEventListener("change", () => {
+  if (!overlayLayer || !mapInstance) return;
+  if (overlayToggle.checked) {
+    overlayLayer.addTo(mapInstance);
+  } else {
+    mapInstance.removeLayer(overlayLayer);
+  }
+  legendEl.hidden = !overlayToggle.checked;
+  opacityInput.disabled = !overlayToggle.checked;
+});
+
+// Opacity. setOpacity only restyles the tiles already on screen — it does not
+// re-request anything, which is exactly why the tiles are rendered opaque and
+// blended here rather than baked with alpha on the server.
+opacityInput.addEventListener("input", () => {
+  if (overlayLayer) overlayLayer.setOpacity(Number(opacityInput.value) / 100);
+});
 
 // As the user types, fetch suggestions — debounced so we don't spam the
 // server. Skip it when the box is empty or already holds coordinates.

@@ -34,7 +34,23 @@
          never use the map never download any of it. -->
     <section id="map-panel" class="map-panel" hidden>
       <p class="detail muted">Click anywhere to check the sky there.</p>
+
+      <div class="map-controls">
+        <label class="control">
+          <input type="checkbox" id="overlay-toggle" checked />
+          Light pollution overlay
+        </label>
+        <label class="control" id="opacity-control">
+          Opacity
+          <input type="range" id="overlay-opacity" min="0" max="100" value="65" />
+        </label>
+      </div>
+
       <div id="map"></div>
+
+      <!-- Legend is built from the same palette the server draws tiles with,
+           fetched at runtime so the two can never drift apart. -->
+      <div id="legend" class="legend" hidden></div>
     </section>
 
     <!-- Short status/error messages appear here. -->
