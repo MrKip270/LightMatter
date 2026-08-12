@@ -8,44 +8,12 @@
 // response. Swapping datasets means replacing the .bin file, not editing this
 // module: the geometry is read from the file's own header.
 
-const fs = require("fs");
-const path = require("path");
-
-const GRID_PATH = path.join(__dirname, "..", "data", "lightpollution.bin");
+// The grid itself is loaded by lightpollutiongrid.js, which the tile renderer
+// also requires. Node caches modules, so both get the same 23 MB buffer instead
+// of two copies.
+const { grid, meta, loadError } = require("./lightpollutiongrid");
 
 const NATURAL_MCD = 0.171168465; // 22.00 mag/arcsec^2 in mcd/m^2
-
-let grid = null;
-let meta = null;
-let loadError = null;
-
-// Load once, at module load. If it fails we record why and let callers report
-// "unavailable" — a fresh clone that hasn't run the build tool should still
-// serve aurora and clouds.
-try {
-  const buffer = fs.readFileSync(GRID_PATH);
-
-  // Header layout: [uint32 length][JSON of that length][uint16 grid data]
-  const headerLength = buffer.readUInt32LE(0);
-  meta = JSON.parse(buffer.subarray(4, 4 + headerLength).toString("utf8"));
-
-  // Uint16Array requires its byteOffset to be a multiple of 2, and the header
-  // length is arbitrary. Copying sidesteps the alignment rule entirely.
-  const dataBytes = Uint8Array.prototype.slice.call(buffer, 4 + headerLength);
-  grid = new Uint16Array(dataBytes.buffer);
-
-  if (grid.length !== meta.width * meta.height) {
-    throw new Error(
-      `grid size mismatch: header says ${meta.width}x${meta.height} ` +
-        `but file holds ${grid.length} cells`
-    );
-  }
-} catch (err) {
-  loadError =
-    err.code === "ENOENT"
-      ? "Light pollution grid not built. Run: node tools/build-lightpollution.js <World_Atlas_2015.tif>"
-      : `Could not load light pollution grid: ${err.message}`;
-}
 
 // --- Pure helpers -------------------------------------------------------------
 
