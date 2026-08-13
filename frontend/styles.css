@@ -26,7 +26,7 @@
 
   /* Lines and edges — straight from the palette. */
   --edge: #441539;
-  --edge-lit: #7a254b;
+  --edge-lit: #7a254b; /* same value as --wine; kept separate so they can diverge */
 
   /* Accents. */
   --brick: #b83533;
@@ -517,7 +517,7 @@ button { cursor: pointer; }
 .locate.busy { color: var(--brick); animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  50% { opacity: 0.5; }
 }
 
 @keyframes shimmer {
@@ -614,7 +614,7 @@ button { cursor: pointer; }
   font-weight: 600;
   font-size: 14px;
 }
-.primary:hover { background: var(--crimson); color: var(--text); }
+.primary:hover { background: var(--crimson); color: var(--peak); }
 
 /* ============================================================================
    NOTICE — surfaces a failure instead of leaving a silent blank page

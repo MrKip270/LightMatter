@@ -23,9 +23,11 @@
   <!-- The map sits underneath everything. Chrome is rendered by app.js BEFORE
        the map is initialised, so a Leaflet or network failure leaves a usable
        interface rather than a blank page. -->
-  <div id="map" aria-label="Map of sky conditions"></div>
+  <main>
+    <div id="map" aria-label="Map of sky conditions"></div>
+  </main>
 
-  <main id="ui"></main>
+  <div id="ui"></div>
 
   <!-- First-visit explainer. Dismissal is remembered, so it never nags. -->
   <div id="entry" class="entry" hidden>
