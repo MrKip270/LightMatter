@@ -159,16 +159,17 @@ button { cursor: pointer; }
   align-items: center;
   gap: 0.26em;
   font-family: var(--display);
-  font-size: 25px; /* was 21px — 20% larger */
+  font-size: 25px;
   padding: 0.34em 0.86em 0.34em 0.58em;
   border-radius: 999px;
-  background: #fff;
-  color: var(--brick);
-  /* No backdrop-filter: the fill is opaque, so blurring what's behind it would
-     cost a compositing layer for nothing. */
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--edge-lit);
+  color: var(--rose);
 }
 .logo-img { height: 1.24em; width: auto; display: block; }
-.logo-fallback { display: none; color: var(--brick); font-size: 1.05em; }
+.logo-fallback { display: none; color: var(--rose); font-size: 1.05em; }
 .logo-word { letter-spacing: 0.01em; }
 
 /* ============================================================================
