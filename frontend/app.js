@@ -109,6 +109,8 @@ function render(state = {}) {
         <span class="glyph" aria-hidden="true">⌕</span>
         <input id="q" type="text" placeholder="Enter a city, or click the map"
                autocomplete="off" aria-label="Search for a place"
+               role="combobox" aria-expanded="false"
+               aria-controls="suggestions" aria-autocomplete="list"
                value="${esc(searchText)}" />
         <span class="divider" aria-hidden="true"></span>
         <button id="locate" class="locate" type="button"
@@ -223,6 +225,10 @@ function wire(state) {
   const input = ui.querySelector("#q");
   const list = ui.querySelector("#suggestions");
   const wrap = ui.querySelector(".searchwrap");
+
+  new MutationObserver(() => {
+    input.setAttribute("aria-expanded", String(!list.hidden));
+  }).observe(list, { attributes: true, attributeFilter: ["hidden"] });
 
   let timer;
   input.addEventListener("input", () => {
