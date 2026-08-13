@@ -287,6 +287,17 @@ button { cursor: pointer; }
 .readout .rv { text-align: right; }
 
 .attrib { font-size: 10px; line-height: 1.5; margin-top: 1.2rem; color: var(--text-faint); }
+.nudge { margin-top: 1rem; }
+.nudge-cta {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--rose);
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .lede { color: var(--text-dim); font-size: 14.5px; line-height: 1.55; }
 
 /* ============================================================================

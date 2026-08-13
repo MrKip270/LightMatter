@@ -206,7 +206,12 @@ function infoBody(state) {
       ${eclipse ? row("Lunar eclipse", eclipse) : ""}
     </div>
 
-    <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
+    <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>
+
+    ${["poor", "bad"].includes(scoreBand(d.score))
+      ? `<p class="window nudge">Poor skies tonight —
+           <button class="nudge-cta" type="button">try a nearby location</button></p>`
+      : ""}`;
 }
 
 const row = (key, value) =>
@@ -282,6 +287,9 @@ function wire(state) {
   });
 
   ui.querySelector("#locate").addEventListener("click", useMyLocation);
+
+  const nudge = ui.querySelector(".nudge-cta");
+  if (nudge) nudge.addEventListener("click", () => ui.querySelector("#q")?.focus());
 
   if (state && state.keepFocus) {
     input.focus();
