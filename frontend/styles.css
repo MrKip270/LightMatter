@@ -490,8 +490,8 @@ button { cursor: pointer; }
    target inside the bubble's height. */
 .locate {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   margin: -0.35rem -0.55rem -0.35rem 0;
   display: grid;
   place-items: center;
@@ -642,6 +642,7 @@ button { cursor: pointer; }
   .rail { transform: translateY(-50%) translateX(calc(100% - 52px)); }
   .logo-word { display: none; }
   .entry-card { width: 92%; min-width: 0; }
+  .suggestions li { padding: 0.75rem 0.8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
