@@ -44,12 +44,14 @@ intended workflow.
 | `lightpollutiontiles.test.js` | Slippy-map projection, palette, PNG rendering, tile route |
 | `reversegeocode.test.js` | Label building, User-Agent policy, throttling, caching |
 | `coords.test.js` | Longitude wrapping, latitude clamping, typed-coordinate parsing |
+| `format.test.js` | Score bands, hour formatting, cloud and eclipse strings |
 | `routes.test.js` | Status codes, validation, response shape, per-source degradation |
 
-`frontend/coords.js` holds the pure coordinate maths precisely so Node can
-`require()` it. `app.js` cannot be tested this way — it calls
+`frontend/coords.js` and `frontend/format.js` hold the pure logic precisely so
+Node can `require()` them. `app.js` cannot be tested this way — it calls
 `document.getElementById` at load time, which throws outside a browser.
-Splitting the pure functions out is what makes them coverable at all.
+Splitting the pure functions out is what makes them coverable at all, and it is
+the reason to keep pushing logic out of the DOM wiring as the frontend grows.
 
 External APIs are mocked in `routes.test.js` with responses captured from the
 real services. Per the PRD, real API calls are exercised manually instead — the

@@ -20,7 +20,8 @@ product spec and the reasoning behind decisions already made.
 | Combined report | `/api/sky` | Two scores, best window, star estimate, target ladder |
 | Map picker | — | Leaflet + OSM, lazy-loaded, click to choose a location |
 | Light pollution overlay | `/api/lightpollution/tile/...` | Server-rendered PNG tiles, opacity slider, legend |
-| Test suite | — | 118 tests, `npm test`, no dependencies |
+| Map-first interface | — | Full-bleed map, summary panel, layer rail, locate pin |
+| Test suite | — | 129 tests, `npm test`, no dependencies |
 
 ---
 
@@ -61,10 +62,15 @@ doesn't do planets, so this needs an ephemeris (`astronomy-engine` is a good
 candidate: local, no key, same philosophy as the suncalc decision). Would turn a
 generic row into "Jupiter, southeast, 40° up at 11 PM."
 
-**7. Solar eclipses.** Deferred deliberately — totality follows a narrow ground
-track, so honest per-location reporting needs path geometry, not a date table.
-Doing it wrong would confidently send someone outside on a day they'd see
-nothing.
+**7. Solar eclipses — as a location summary line, not a map layer.** Totality
+follows a narrow ground track, so honest per-location reporting needs path
+geometry rather than a date table. The original UI concept called for eclipse
+paths drawn on the map; that was dropped. Both lunar and solar eclipses belong
+in the **location summary** as a dated line ("partial lunar eclipse in 23 days,
+visible here") — a point-in-time fact about one place reads better as a sentence
+than as paint spread across a continent, and it does not require inventing
+geometry we do not have. Lunar eclipses already render this way in the
+prototype; solar needs the ground-track data before it can join them.
 
 ---
 
@@ -109,12 +115,29 @@ question than "how is it here?"
 **15. Find the nearest dark site.** Search the light pollution grid outward for
 the closest cell above a target SQM. The data is already in memory; this is a
 search problem, not a data problem. Now considerably more compelling with a map
-to display the answer on.
+to display the answer on, and the UI concept explicitly calls for it — "recommends
+nearest location with nightly score over some threshold, nearest location with
+overall score over some threshold". Two distinct recommendations, since a place
+can be excellent tonight but ordinary in general, or the reverse.
 
 **15b. ~~Light pollution overlay on the map.~~ DONE.** Built as server-rendered
 PNG tiles. The `L.imageOverlay` alternative was rejected on inspection: the grid
 is EPSG:4326 and Leaflet is EPSG:3857, so a linear corner-to-corner overlay
 would misplace high latitudes by hundreds of kilometres.
+
+**15c. Aurora overlay on the map.** Not built. The cheapest remaining map layer:
+NOAA's OVATION product is already a global grid, and
+`backend/sources/lightpollutiontiles.js` is a working tile renderer that could
+be pointed at it with modest changes. Unlike light pollution it is *live* — the
+grid refreshes every few minutes — so it needs a short cache lifetime and a
+"forecast time" label rather than the immutable caching the static atlas gets.
+
+**15d. Cloud cover — a summary datapoint, not a map layer.** The original UI
+concept called for a cloud overlay; dropped. Open-Meteo is a point query, so
+real cloud tiles would need satellite imagery from an entirely different source.
+Cloud cover already appears in the location summary as a percentage and a
+verdict, which is the more useful form anyway — "82% average tonight, overcast"
+answers the question directly, where a grey wash over a map does not.
 
 **16. Hourly forecast chart.** `/api/sky` already returns a full `timeline` with
 per-hour cloud cover, moon altitude, and effective SQM. Nothing renders it yet —
@@ -128,9 +151,16 @@ current window claims, which makes early-evening hours look better than they are
 
 ## Tier 5 — Polish and operations
 
-**18. The styling pass.** Deliberately deferred until the data was right. The
-`frontend-design` and `web-design-guidelines` skills in `~/.agents/skills/` are
-for this.
+**18. ~~The styling pass.~~ DONE.** Built as a throwaway prototype at
+`frontend/prototype/` with three structurally different variants, then folded in
+after variant A won. Rewritten rather than copied — the prototype was written
+under prototype constraints (no tests, minimal error handling), so promoting it
+directly would have shipped that. Pure formatting was extracted to
+`frontend/format.js` and covered by tests on the way in.
+
+Still outstanding from that work: an audit against the Vercel Web Interface
+Guidelines using the `web-design-guidelines` skill, which is a reviewer rather
+than a designer and is best run now that the markup has settled.
 
 **19. Accessibility.** Verdict colors currently pair with text labels (good), but
 the whole thing needs a keyboard and screen-reader pass. Autocomplete is the
@@ -157,9 +187,10 @@ social features.
 1. ~~Tests~~ — done
 2. ~~Light pollution overlay~~ — done
 3. Twilight handling (4.17) — small fix, real accuracy gain
-4. Find nearest dark site (4.15) — the grid is loaded and there's now a map to show the answer on
-5. Severe weather (2.4) — completes a PRD story, no key needed
-6. Hourly chart (4.16) — data already exists, pure frontend
-7. Planets via ephemeris (2.6) — biggest single upgrade to the report
-8. Caching (1.3) — before anyone else uses it
-9. Styling pass (5.18) — once the content has stopped moving
+4. Find nearest dark site (4.15) — the grid is loaded, there's a map to show it on, and the UI concept asks for it
+5. Aurora overlay (4.15c) — cheapest remaining map layer, renderer already exists
+6. Severe weather (2.4) — completes a PRD story, no key needed
+7. Hourly chart (4.16) — data already exists, pure frontend
+8. Planets via ephemeris (2.6) — biggest single upgrade to the report
+9. Caching (1.3) — before anyone else uses it
+10. Fold the prototype in (5.18) — once the content has stopped moving

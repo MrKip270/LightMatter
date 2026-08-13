@@ -14,12 +14,12 @@ optional.
 
 Early development, built step by step as a learning project. Working today:
 
-- **Location input** — search by city name (with an autocomplete dropdown of
-  real, resolvable places), enter raw `(lat, lon)` coordinates, use the
-  browser's "use my location" (GPS), or **pick a point on a map**. The map is
-  collapsed by default and loads Leaflet only when opened, so visitors who never
-  use it never download it. It carries a **light pollution overlay** rendered
-  from our own grid, with an opacity slider and a colour key.
+- **Map-first interface.** The map *is* the page. Search by city name (with an
+  autocomplete dropdown of real, resolvable places), enter raw `(lat, lon)`
+  coordinates, tap the pin to use your device location, or click anywhere on the
+  map. A **light pollution overlay** rendered from our own grid sits over it,
+  with an opacity slider and a colour key, and the location summary slides in
+  from the left.
 - **Aurora** — live aurora probability for any location, from NOAA SWPC.
 - **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
   the hours between local sunset and sunrise and reduced to a plain-language
@@ -104,14 +104,22 @@ LightMatter/
 ├── frontend/
 │   ├── index.html           # page markup
 │   ├── styles.css           # styling
-│   ├── coords.js            # pure coordinate maths — no DOM, so it's testable
-│   └── app.js               # location input, autocomplete, map, fetch + render
+│   ├── coords.js            # pure coordinate maths  — no DOM, so it's testable
+│   ├── format.js            # pure display formatting — same reason
+│   ├── app.js               # DOM wiring: map, search, panel, fetch + render
+│   └── assets/logo.png
 ├── tools/                   # one-off dev scripts, not part of the server
 │   ├── inspect-atlas.js     #   print GeoTIFF header + probe pixels
 │   └── build-lightpollution.js  # downsample the atlas into backend/data/
 └── docs/
     └── PRD.md               # product requirements
 ```
+
+**Why `coords.js` and `format.js` are separate from `app.js`:** they contain no
+DOM access, so Node can `require()` them and the test suite can cover them.
+`app.js` calls `document.getElementById` at load time and throws outside a
+browser. Splitting the pure logic out is what makes any of the frontend
+testable — pure functions in one file, DOM wiring in another.
 
 **Why `sources/` and `routes/` are separate:** `/api/sky` needs data from every
 source. A route cannot sensibly call another route — that would mean a real HTTP
