@@ -535,8 +535,6 @@ function hideEntry() {
 }
 
 document.getElementById("entry-proceed").addEventListener("click", () => {
-  lightOn = document.getElementById("entry-light").checked;
-  if (map && lightLayer) lightOn ? lightLayer.addTo(map) : map.removeLayer(lightLayer);
   hideEntry();
   render({});
 });

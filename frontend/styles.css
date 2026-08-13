@@ -592,18 +592,6 @@ button { cursor: pointer; }
 .entry-card .display { font-size: 34px; margin-bottom: 0.9rem; }
 .entry-card .display em { font-style: italic; color: var(--rose); }
 .entry-card .lede { margin: 0 0 1.4rem; }
-.entry-toggles { border: none; padding: 0; margin: 0 0 1.5rem; }
-.entry-toggles legend {
-  font-family: var(--data);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--orchid);
-  padding: 0;
-  margin-bottom: 0.5rem;
-}
-.entry-toggles label { display: flex; gap: 0.5rem; padding: 0.3rem 0; font-size: 14px; }
-.entry-toggles input { accent-color: var(--brick); }
 
 .primary {
   background: var(--brick);
