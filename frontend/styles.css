@@ -1,315 +1,608 @@
-/* LightMatter styles
-   The look and feel of the site lives here. Empty for now —
-   we'll add real styling once the page has content to style. */
+/* LightMatter — styles
+ *
+ * Map-first interface: the map is the page, everything else is chrome over it.
+ * Folded in from frontend/prototype/ after the UI prototype settled.
+ */
 
-body {
-  font-family: system-ui, sans-serif;
-  margin: 2rem;
+/* ============================================================================
+   TOKENS
+
+   Palette comes from the project colourways — warm reds, wines and plums.
+   They are used on TEXT, OUTLINES and BORDERS only. The map overlay keeps the
+   scientific light-pollution palette, because that one has to stay comparable
+   against the reference maps; if the chrome used the same hues, a user could
+   not tell decoration from data.
+
+   Source swatches:
+   #b83533  #712983  #3f1021  #7a254b  #cf7994  #441539  #5f1621  #992633  #a04089
+   ========================================================================= */
+:root {
+  /* Grounds — near-black with a plum cast. Darkened from the first pass: the
+     lighter plum was competing with the text sitting on it, and every readout
+     in the summary panel is small type. */
+  --ink: #050308;
+  --panel: #0f070e;
+  --panel-2: #170b15;
+
+  /* Lines and edges — straight from the palette. */
+  --edge: #441539;
+  --edge-lit: #7a254b;
+
+  /* Accents. */
+  --brick: #b83533;
+  --crimson: #992633;
+  --blood: #5f1621;
+  --wine: #7a254b;
+  --plum: #712983;
+  --orchid: #a04089;
+  --rose: #cf7994;
+  --oxblood: #3f1021;
+
+  /* Score ramp, brightest to darkest. Quality is encoded by BRIGHTNESS along
+     one warm run rather than by hue: a red/green scale would clash with this
+     palette and fails for roughly 8% of men. The ember is the one colour not
+     in the source swatches — the gap between rose and crimson was too wide to
+     read as a step. */
+  --peak: #fff4f7;
+  --ember: #d9713f;
+
+  /* Text. Warm white so it sits in the same family as the accents. */
+  --text: #fbf2f5;
+  --text-dim: #d98da5;
+  --text-faint: #9d6a7e;
+
+  --display: "Instrument Serif", Georgia, serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  /* Monospace for SQM, coordinates, magnitudes, times. Tabular values that
+     should align in a column — the typeface encodes something true about the
+     content rather than decorating it. */
+  --data: "IBM Plex Mono", ui-monospace, monospace;
+
+  --blur: saturate(130%) blur(14px);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* Autocomplete dropdown (functional styling; full theme comes later). */
-.input-wrap {
-  position: relative;      /* anchor the dropdown to this box */
-  display: inline-block;
-}
+/* ============================================================================
+   BASE
+   ========================================================================= */
+* { box-sizing: border-box; }
 
-.suggestions {
-  position: absolute;      /* float over the page, below the input */
-  top: 100%;
-  left: 0;
-  right: 0;
+html, body {
   margin: 0;
-  padding: 0;
-  list-style: none;
-  background: white;
-  border: 1px solid #ccc;
-  border-top: none;
-  max-height: 220px;
-  overflow-y: auto;
-  z-index: 10;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
 }
 
-.suggestions li {
-  padding: 0.5rem;
-  cursor: pointer;
-}
-
-.suggestions li:hover {
-  background: #eee;
-}
-
-.suggestions[hidden] {
-  display: none;
-}
-
-/* --- Map picker ----------------------------------------------------------- */
-
-.map-panel {
-  margin-top: 1rem;
-  max-width: 34rem;
-}
-
-.map-panel[hidden] {
-  display: none;
-}
-
-.map-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.control {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-#overlay-opacity {
-  width: 8rem;
-}
-
-/* Leaflet needs an explicit height: its container has no intrinsic size, so
-   without this the map collapses to zero pixels and renders nothing. */
 #map {
-  height: 22rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: var(--ink);
 }
 
-/* Colour key. Reads darkest-first, matching how the question is asked:
-   "where is it good?" rather than "where is it bad?" */
-.legend {
-  margin-top: 0.5rem;
+/* The base map is NOT dimmed any more. Previously a brightness(0.75) filter sat
+   on the whole tile pane, which darkened the city labels along with everything
+   else and made them unreadable under the overlay. Legibility is handled by
+   layer ORDER instead — see the labels pane in app.js — so the overlay
+   sits between the basemap and its labels rather than on top of both. */
+.leaflet-container { background: var(--ink); }
+
+.leaflet-control-attribution {
+  background: rgba(13, 7, 17, 0.78) !important;
+  color: var(--text-faint) !important;
+  font-family: var(--data);
+  font-size: 10px;
+}
+.leaflet-control-attribution a { color: var(--text-dim) !important; }
+.leaflet-control-zoom a {
+  background: var(--panel) !important;
+  color: var(--text) !important;
+  border-color: var(--edge-lit) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--panel-2) !important; }
+
+#ui {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+#ui > * { pointer-events: auto; }
+
+.panel {
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
 }
 
-.legend[hidden] {
-  display: none;
+.display {
+  font-family: var(--display);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0;
 }
 
+.eyebrow {
+  font-family: var(--data);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orchid);
+  margin: 0 0 0.5rem;
+}
+
+.mono { font-family: var(--data); font-variant-numeric: tabular-nums; }
+.dim { color: var(--text-dim); }
+
+button, input { font-family: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+
+/* ============================================================================
+   LOGO — top right, corner only
+
+   Everything inside is sized in `em`, so the single font-size below scales the
+   whole lockup: padding, gap and mark all follow. Changing the size is one
+   number rather than six that can drift out of proportion.
+   ========================================================================= */
+.logo {
+  position: absolute;
+  top: 1.05rem;
+  right: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.26em;
+  font-family: var(--display);
+  font-size: 25px; /* was 21px — 20% larger */
+  padding: 0.34em 0.86em 0.34em 0.58em;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brick);
+  /* No backdrop-filter: the fill is opaque, so blurring what's behind it would
+     cost a compositing layer for nothing. */
+}
+.logo-img { height: 1.24em; width: auto; display: block; }
+.logo-fallback { display: none; color: var(--brick); font-size: 1.05em; }
+.logo-word { letter-spacing: 0.01em; }
+
+/* ============================================================================
+   MENU — top left
+   ========================================================================= */
+.menu {
+  position: absolute;
+  top: 1rem;
+  left: 1.1rem;
+  width: 44px;   /* 44px is the minimum comfortable touch target */
+  height: 44px;
+  border-radius: 12px;
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge-lit);
+  color: var(--rose);
+}
+.menu:hover { border-color: var(--brick); }
+
+/* ============================================================================
+   INFO PANEL — left, full height, 35% wide
+   ========================================================================= */
+.info {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 35%;
+  min-width: 340px;
+  max-width: 470px;
+  padding: 4.6rem 1.6rem 2rem;
+  overflow-y: auto;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  border-right: 1px solid var(--edge-lit);
+  transform: translateX(-101%);
+  transition: transform 380ms var(--ease);
+}
+.info.open { transform: none; }
+
+.info-title { font-size: 30px; margin-bottom: 1.3rem; }
+
+.scoreline { display: flex; gap: 1rem; }
+.scorebox {
+  flex: 1;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+}
+.scorebox .n { font-family: var(--display); font-size: 42px; line-height: 1; }
+.scorebox .k {
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 0.15rem;
+}
+
+/* Five steps: white → pink → orange → crimson → blood. */
+.n[data-band="peak"] { color: var(--peak); }
+.n[data-band="good"] { color: var(--rose); }
+.n[data-band="fair"] { color: var(--ember); }
+.n[data-band="poor"] { color: var(--crimson); }
+.n[data-band="bad"]  { color: var(--blood); }
+.n[data-band="none"] { color: var(--text-faint); }
+
+.headline { font-size: 15px; line-height: 1.55; color: var(--text-dim); margin: 1.1rem 0 1rem; }
+
+.window {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  padding: 0.55rem 0.7rem;
+  border-left: 2px solid var(--brick);
+  background: color-mix(in srgb, var(--brick) 10%, transparent);
+  margin: 0 0 1.2rem;
+}
+
+.targets { list-style: none; margin: 0 0 1.4rem; padding: 0; }
+.targets li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--edge);
+  font-size: 13.5px;
+}
+.targets .v {
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Same ramp as the scores, so a colour means one thing everywhere. */
+.v[data-v="Likely"]      { color: var(--peak); }
+.v[data-v="Possible"]    { color: var(--ember); }
+.v[data-v="Not visible"] { color: var(--crimson); }
+.v[data-v="Unknown"]     { color: var(--text-faint); }
+
+/* Cloud cover and eclipse info live here rather than as map layers — both are
+   point-in-time facts about one place, which read better as a number than as
+   paint spread over a continent. */
+.readout { font-size: 12px; }
+.readout .r {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed var(--edge);
+}
+.readout .rk { color: var(--text-faint); letter-spacing: 0.04em; }
+.readout .rv { text-align: right; }
+
+.attrib { font-size: 10px; line-height: 1.5; margin-top: 1.2rem; color: var(--text-faint); }
+.lede { color: var(--text-dim); font-size: 14.5px; line-height: 1.55; }
+
+/* ============================================================================
+   LAYER RAIL — right edge, slides out
+   Hover opens it on a pointer device; tap opens it on touch. The concept
+   specified hover only, which would leave the toggles unreachable on a phone.
+   ========================================================================= */
+.rail {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 15rem;
+  transform: translateY(-50%) translateX(calc(100% - 44px));
+  transition: transform 320ms var(--ease);
+  padding: 1.1rem 1.2rem 1.1rem 2.6rem;
+  border-radius: 16px 0 0 16px;
+  border-right: none;
+  border-color: var(--edge-lit);
+}
+.rail:hover, .rail:focus-within, .rail.open { transform: translateY(-50%); }
+
+/* The grab handle — the only part visible when closed. */
+.rail::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 48px;
+  border-radius: 2px;
+  background: linear-gradient(var(--brick), var(--plum));
+}
+
+.rail-title {
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orchid);
+  margin: 0 0 0.6rem;
+}
+.layer {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0;
+  font-size: 13.5px;
+}
+.layer.off { color: var(--text-faint); }
+.layer em {
+  font-family: var(--data);
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wine);
+}
+/* Colour key. Built from the server's palette so it cannot drift from the
+   tiles it describes. */
+.legend { margin: 0.7rem 0 0.2rem; }
 .swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.15rem 0.6rem;
-  font-size: 0.75rem;
-  margin-bottom: 0.3rem;
+  gap: 0.15rem 0.5rem;
+  font-family: var(--data);
+  font-size: 9.5px;
+  color: var(--text-faint);
 }
-
-.swatch {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.swatch-colour {
-  width: 1.1rem;
-  height: 0.7rem;
-  border: 1px solid #999;
+.swatch { display: flex; align-items: center; gap: 0.22rem; }
+.chip {
+  width: 0.95rem;
+  height: 0.55rem;
   border-radius: 2px;
+  border: 1px solid var(--edge);
   display: inline-block;
 }
-
-@media (max-width: 30rem) {
-  #map {
-    height: 16rem;
-  }
+.legend-note {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  margin: 0.4rem 0 0;
 }
 
-/* Result cards — one per data source. Functional only; the real theme comes
-   after all the sources exist (see the PRD: build the machine, then style it). */
-.results {
-  margin-top: 1.5rem;
-  max-width: 34rem;
+.rail-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  margin: 0.9rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--edge);
 }
 
-.card {
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.card h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #666;
-}
-
-/* A source that couldn't report. Visually recessed so a single outage reads as
-   "this one section is missing", not "the page is broken". */
-.card.unavailable {
-  border-style: dashed;
-  background: #fafafa;
-}
-
-.verdict {
-  margin: 0 0 0.4rem;
-  font-size: 1.1rem;
-}
-
-.detail {
-  margin: 0.15rem 0;
-  font-size: 0.9rem;
-}
-
-.muted {
-  color: #777;
-}
-
-/* --- Combined report ------------------------------------------------------ */
-
-.summary {
-  border: 2px solid #333;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.25rem;
-}
-
-/* Two scores side by side, equal weight — they answer different questions,
-   so neither is subordinate to the other. */
-.scores {
+/* Overlay opacity slider — the overlay now sits UNDER the map labels, so this
+   can run high without hiding city names. */
+.opacity-row {
   display: flex;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.score-box {
-  flex: 1;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 0.6rem 0.75rem;
-}
-
-.score-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #444;
-  margin-top: 0.25rem;
-}
-
-.score-sub {
-  font-size: 0.75rem;
-  line-height: 1.25;
-  margin-top: 0.1rem;
-}
-
-.gap-note {
-  margin-top: -0.35rem;
-  margin-bottom: 0.75rem;
-}
-
-.score {
-  font-size: 2.4rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.score-max {
-  font-size: 1rem;
-  font-weight: 400;
-  color: #777;
-}
-
-/* Band is set by the score value. Colour is reinforcement only — the number
-   and the headline already carry the meaning, so this stays readable if the
-   colours don't render or the reader can't distinguish them. */
-.score[data-band="good"] { color: #1a7f37; }
-.score[data-band="fair"] { color: #9a6700; }
-.score[data-band="poor"] { color: #bc4c00; }
-.score[data-band="bad"]  { color: #a40e26; }
-.score-unknown           { color: #777; }
-
-.headline {
-  font-size: 1.05rem;
-  margin: 0.5rem 0 1rem;
-}
-
-.window {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-}
-
-.stars {
-  margin: 0.5rem 0 0.15rem;
-  font-size: 0.95rem;
-}
-
-.eclipse {
+  align-items: center;
+  gap: 0.5rem;
   margin-top: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  background: #fff8e1;
-  border-left: 3px solid #9a6700;
-  font-size: 0.85rem;
+  font-family: var(--data);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.opacity-row input { flex: 1; accent-color: var(--brick); }
+
+/* ============================================================================
+   SEARCH — bubble, fixed at 15% from bottom. It does NOT move.
+
+   Two earlier behaviours removed:
+   1. The bar migrated to the centre of the screen while typing. Distracting,
+      and it landed on top of the results it was meant to reveal.
+   2. The dropdown was a sibling in normal flow. Because the wrapper is anchored
+      by its BOTTOM edge, adding a tall list below the input grew the box
+      upward — shoving the search bar up the screen as you typed.
+
+   The wrapper is now zero-height at a fixed anchor, and the dropdown is
+   absolutely positioned above it. Nothing the dropdown does can move the bar.
+   ========================================================================= */
+.searchwrap {
+  position: absolute;
+  left: 50%;
+  bottom: 15%;
+  width: 35%; /* was 50% — narrowed by 30% */
+  max-width: 434px;
+  min-width: 260px;
+  transform: translateX(-50%);
 }
 
-.targets {
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.8rem 1.2rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge-lit);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.65);
+  transition: border-color 200ms var(--ease);
+}
+.search:focus-within { border-color: var(--brick); }
+.search input {
+  flex: 1;
+  background: none;
+  border: none;
+  font-size: 15px;
+  min-width: 0;
+}
+.search input:focus { outline: none; }
+.search input::placeholder { color: var(--text-faint); }
+.search .glyph { color: var(--rose); }
+
+/* Separates the typed-search half from the locate button, so the pin reads as
+   its own action rather than as decoration inside the text field. */
+.search .divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.1rem 0.15rem 0.1rem 0.35rem;
+  background: var(--edge-lit);
+}
+
+/* Pin — "use my current location". 40px keeps it close to a comfortable touch
+   target inside the bubble's height. */
+.locate {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  margin: -0.35rem -0.55rem -0.35rem 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--rose);
+  transition: color 160ms var(--ease), background 160ms var(--ease);
+}
+.locate svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.locate:hover { color: var(--peak); background: color-mix(in srgb, var(--brick) 22%, transparent); }
+
+/* A permission prompt or GPS fix can take seconds. Without a visible working
+   state the first tap reads as a dead button. */
+.locate.busy { color: var(--brick); animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Sits above the bar, out of flow — same reasoning as the suggestions list.
+   A message must never be able to push the search bar around. */
+.toast {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  border-color: var(--edge-lit);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.5);
+}
+.toast[hidden] { display: none; }
+
+/* Opens UPWARD, out of flow. At 15% from the bottom there isn't room to drop
+   downward, and taking it out of flow is what keeps the bar still. */
+.suggestions {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
   list-style: none;
   margin: 0;
-  padding: 0;
-  border-top: 1px solid #ddd;
+  padding: 0.3rem;
+  border-radius: 14px;
+  max-height: 15rem;
+  overflow-y: auto;
+  border-color: var(--edge-lit);
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.55);
 }
+.suggestions[hidden] { display: none; }
+.suggestions li {
+  padding: 0.55rem 0.8rem;
+  border-radius: 9px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.suggestions li:hover { background: var(--oxblood); color: var(--rose); }
 
-.targets li {
+/* ============================================================================
+   ENTRY OVERLAY
+   ========================================================================= */
+.entry {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
   display: grid;
-  grid-template-columns: 6.5rem 1fr;
-  gap: 0.15rem 0.75rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #eee;
-  font-size: 0.9rem;
+  place-items: center;
+  background: color-mix(in srgb, var(--ink) 86%, transparent);
+  backdrop-filter: blur(6px);
 }
-
-.target-verdict {
-  font-weight: 600;
-  font-size: 0.75rem;
+.entry[hidden] { display: none; }
+.entry-card {
+  width: min(40%, 560px);
+  min-width: 320px;
+  padding: 2rem 2.1rem;
+  border-radius: 20px;
+  background: var(--panel);
+  border: 1px solid var(--edge-lit);
+}
+.entry-card .display { font-size: 34px; margin-bottom: 0.9rem; }
+.entry-card .display em { font-style: italic; color: var(--rose); }
+.entry-card .lede { margin: 0 0 1.4rem; }
+.entry-toggles { border: none; padding: 0; margin: 0 0 1.5rem; }
+.entry-toggles legend {
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  align-self: center;
+  color: var(--orchid);
+  padding: 0;
+  margin-bottom: 0.5rem;
 }
+.entry-toggles label { display: flex; gap: 0.5rem; padding: 0.3rem 0; font-size: 14px; }
+.entry-toggles input { accent-color: var(--brick); }
 
-.verdict-likely      .target-verdict { color: #1a7f37; }
-.verdict-possible    .target-verdict { color: #9a6700; }
-.verdict-not-visible .target-verdict { color: #a40e26; }
-.verdict-unknown     .target-verdict { color: #777; }
-
-.target-name {
+.primary {
+  background: var(--brick);
+  color: #180a0a;
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.5rem;
   font-weight: 600;
+  font-size: 14px;
+}
+.primary:hover { background: var(--crimson); color: var(--text); }
+
+/* ============================================================================
+   NOTICE — surfaces a failure instead of leaving a silent blank page
+   ========================================================================= */
+.notice {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1100;
+  padding: 0.65rem 1rem;
+  background: var(--blood);
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+}
+.notice[hidden] { display: none; }
+
+/* ============================================================================
+   RESPONSIVE
+   The concept's percentages collapse on a phone: 5% of 380px is a 19px target,
+   under half the 44px minimum, and a 35% panel is ~130px wide.
+   ========================================================================= */
+@media (max-width: 46rem) {
+  .info { width: 100%; min-width: 0; max-width: none; }
+  .searchwrap { width: 90%; bottom: 9%; }
+  .rail { transform: translateY(-50%) translateX(calc(100% - 52px)); }
+  .logo-word { display: none; }
+  .entry-card { width: 92%; min-width: 0; }
 }
 
-.target-reason {
-  grid-column: 2;
-  color: #666;
-  font-size: 0.85rem;
-}
-
-.detail-heading {
-  margin: 1.25rem 0 0.5rem;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #777;
-}
-
-/* Stack the verdict above the name on narrow screens (PRD: mobile users). */
-@media (max-width: 30rem) {
-  .targets li {
-    grid-template-columns: 1fr;
-  }
-  .target-reason {
-    grid-column: 1;
-  }
-  /* Keep the two scores side by side even on a phone — the comparison IS the
-     point, and stacking them would read as a sequence rather than a pair. */
-  .scores {
-    gap: 0.5rem;
-  }
-  .score {
-    font-size: 1.9rem;
-  }
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

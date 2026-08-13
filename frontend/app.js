@@ -1,767 +1,564 @@
-// LightMatter frontend logic
+// LightMatter — frontend
 //
-// The flow (matches our backend architecture):
-//   city name  -> /api/geocode -> { lat, lon }
-//   "use my location" -> browser GPS -> { lat, lon }
-//   { lat, lon } -> /api/aurora -> show result
+// Map-first: the map is the page, and everything else is chrome over it.
 //
-// Both input methods produce coordinates, then take the SAME final path.
+// BOOT ORDER MATTERS. The interface renders before the map is touched, and map
+// setup is wrapped in try/catch. Layout must not depend on Leaflet loading or
+// the network succeeding — a failure there should cost the map, not the page.
+//
+// Pure logic lives in coords.js and format.js, which have no DOM access and are
+// covered by the test suite. This file is the DOM wiring.
 
-// --- 1. Grab the page elements we need to read from or write to. ---
-const form = document.getElementById("location-form");
-const placeInput = document.getElementById("place-input");
-const locateBtn = document.getElementById("locate-btn");
-const statusEl = document.getElementById("status");
-const resultsEl = document.getElementById("results");
-const suggestionsEl = document.getElementById("suggestions");
+const noticeEl = document.getElementById("notice");
+const ui = document.getElementById("ui");
+const entry = document.getElementById("entry");
 
-// --- 2. Small helpers ---
+const SEEN_KEY = "lightmatter.introSeen";
 
-// Show a short status message (e.g. "Loading...", or an error).
-function setStatus(message) {
-  statusEl.textContent = message;
+let map = null;
+let marker = null;
+let lightLayer = null;
+let lightOn = true;
+let lightOpacity = 0.35;
+let legendStops = null;
+
+let report = null; // latest /api/sky result
+let searchText = "";
+let railOpen = false;
+let infoOpen = false;
+let lastPoint = null;
+
+// --- helpers ----------------------------------------------------------------
+
+// Place names come from external APIs and from what the user typed, so they are
+// escaped before ever reaching innerHTML. Setting textContent on a throwaway
+// element lets the browser do it correctly rather than hand-rolling replacements.
+function esc(value) {
+  const el = document.createElement("div");
+  el.textContent = String(value ?? "");
+  return el.innerHTML;
 }
 
-// Turn an aurora percentage into a plain-language verdict (PRD output model).
-function verdict(probability) {
-  if (probability >= 30) return "Likely";
-  if (probability >= 10) return "Possible";
-  if (probability > 0) return "Unlikely";
-  return "None expected";
+function notice(message, ms = 6000) {
+  noticeEl.textContent = message;
+  noticeEl.hidden = false;
+  if (ms) setTimeout(() => (noticeEl.hidden = true), ms);
 }
 
-// parseCoordinates and normalizeCoords come from coords.js, loaded before this
-// file. They live there because they are pure functions with no DOM access,
-// which is what lets the Node test suite cover them.
-
-// Decide what the user meant: coordinates or a city name.
-function handleSearch(text) {
-  const coords = parseCoordinates(text);
-  if (coords) {
-    // Coordinates given directly — skip geocoding entirely.
-    showSkyReportForCoords(coords.lat, coords.lon, `(${coords.lat}, ${coords.lon})`);
-  } else {
-    // Otherwise treat it as a place name.
-    searchByName(text);
-  }
-}
-
-// --- 3. The shared final step: given coordinates, fetch + show every source. ---
-
-// Escape text before putting it in HTML. Place names come from an external API
-// and from what the user typed, so treating them as trusted markup would be an
-// injection hole. Setting .textContent on a throwaway element makes the browser
-// do the escaping for us, correctly, instead of us hand-rolling replacements.
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = String(text);
-  return div.innerHTML;
-}
-
-// "2026-07-31T20:00" -> "8 PM"
-// Note we slice the string rather than build a Date, for exactly the reason the
-// backend does: these timestamps are LOCAL TO THE SEARCHED LOCATION. Handing
-// one to new Date() makes the browser reinterpret it in the *viewer's* timezone,
-// so a Chicago sunset would display shifted for a user sitting in London.
-function formatHour(localIso) {
-  const hour = Number(localIso.slice(11, 13));
-  const suffix = hour < 12 ? "AM" : "PM";
-  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${hour12} ${suffix}`;
-}
-
-// Fetch JSON from one of our routes, throwing a useful Error on failure.
-// Our routes reply with { error: "..." } and a non-200 status when they fail.
-async function fetchJson(url) {
+async function getJson(url) {
   const response = await fetch(url);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Request failed");
-  }
-  return data;
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  return body;
 }
 
-// The backend now returns each source either as its normal object or as
-// { error: "..." }. Normalise that into the { status, value/reason } shape the
-// render functions below already expect, so they didn't have to change when we
-// moved from three fetches to one.
-function asSettled(source) {
-  if (!source || source.error) {
-    return { status: "rejected", reason: { message: source?.error || "No data" } };
-  }
-  return { status: "fulfilled", value: source };
-}
+// --- rendering --------------------------------------------------------------
+//
+// One template, re-rendered on every state change. At this size a full
+// re-render is imperceptible and it removes every class of stale-DOM bug.
 
-// A consistent "this source didn't work" block, so every section degrades the
-// same way. The PRD requires one dead source not to break the page.
-function unavailableCard(title, reason) {
-  return `
-    <div class="card unavailable">
-      <h3>${escapeHtml(title)}</h3>
-      <p class="detail muted">${escapeHtml(reason)}</p>
+function render(state = {}) {
+  const showInfo = infoOpen && (report || state.loading || state.error);
+
+  ui.innerHTML = `
+    <button class="menu" aria-label="${showInfo ? "Hide" : "Show"} location summary"
+            aria-expanded="${showInfo}">☰</button>
+
+    <div class="logo">
+      <img src="assets/logo.png" alt="LightMatter" class="logo-img"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='inline'" />
+      <span class="logo-fallback" aria-hidden="true">◐</span>
+      <span class="logo-word">LightMatter</span>
     </div>
-  `;
-}
 
-// Render the cloud section from an allSettled result.
-function renderClouds(settled) {
-  if (settled.status === "rejected") {
-    return unavailableCard("Clouds", `Unavailable — ${settled.reason.message}`);
-  }
+    <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite">
+      ${infoBody(state)}
+    </aside>
 
-  const data = settled.value;
-
-  // The backend distinguishes "the request failed" (a 502, handled above) from
-  // "the request worked but there's nothing to report" (this branch).
-  if (!data.dataAvailable) {
-    return unavailableCard("Clouds", data.visibility);
-  }
-
-  const run = data.bestClearRun;
-  const clearWindowLine = run
-    ? `<p class="detail">Clearest stretch: ${run.hours} hr from ${formatHour(
-        run.start
-      )} to ${formatHour(run.end)}</p>`
-    : `<p class="detail">No clear stretch tonight.</p>`;
-
-  const nightLine = data.night.polarEdgeCase
-    ? `<p class="detail muted">The sun doesn't fully rise or set here today, so this covers the whole day.</p>`
-    : `<p class="detail muted">Night window: ${formatHour(
-        data.night.start
-      )} to ${formatHour(data.night.end)} local time.</p>`;
-
-  return `
-    <div class="card">
-      <h3>Clouds</h3>
-      <p class="verdict"><strong>${escapeHtml(data.verdict)}</strong> — ${escapeHtml(
-    data.visibility
-  )}</p>
-      <p class="detail">Average cover tonight: ${data.averageCloudCover}%</p>
-      ${clearWindowLine}
-      ${nightLine}
-    </div>
-  `;
-}
-
-// Render the light pollution section from an allSettled result.
-function renderLightPollution(settled) {
-  if (settled.status === "rejected") {
-    return unavailableCard("Light pollution", `Unavailable — ${settled.reason.message}`);
-  }
-
-  const data = settled.value;
-
-  if (!data.dataAvailable) {
-    return unavailableCard("Light pollution", data.visibility);
-  }
-
-  return `
-    <div class="card">
-      <h3>Light pollution</h3>
-      <p class="verdict"><strong>${escapeHtml(data.sky)}</strong></p>
-      <p class="detail">${escapeHtml(data.visibility)}</p>
-      <p class="detail">Sky brightness: ${data.sqm} mag/arcsec² —
-        stars visible to magnitude ${data.nakedEyeLimitingMagnitude}</p>
-      <p class="detail muted">${data.dataYear} data, ~${data.resolutionKm} km resolution.
-        ${escapeHtml(data.attribution)}</p>
-    </div>
-  `;
-}
-
-// Render the moon section from an allSettled result.
-function renderMoon(settled) {
-  if (settled.status === "rejected") {
-    return unavailableCard("Moon", `Unavailable — ${settled.reason.message}`);
-  }
-
-  const data = settled.value;
-
-  const shortDate = (iso) =>
-    new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-
-  // An eclipse is worth surfacing loudly — they're rare and dateable.
-  const eclipse = data.upcomingEclipse
-    ? `<p class="detail eclipse">${
-        data.upcomingEclipse.visibleHere ? "Visible here" : "Not visible from here"
-      }: ${escapeHtml(data.upcomingEclipse.type)} lunar eclipse in
-       ${data.upcomingEclipse.daysAway} days (${shortDate(
-        data.upcomingEclipse.greatestEclipseUtc
-      )}). ${escapeHtml(data.upcomingEclipse.note)}</p>`
-    : "";
-
-  return `
-    <div class="card">
-      <h3>Moon</h3>
-      <p class="verdict"><strong>${escapeHtml(data.phaseName)}</strong> —
-        ${data.illuminatedFraction}% lit</p>
-      <p class="detail">Brightness vs a full moon: ${data.brightnessVsFullMoon}%
-        <span class="muted">(moonlight falls off far faster than the lit area suggests)</span></p>
-      <p class="detail">Currently ${
-        data.aboveHorizonNow
-          ? `${data.altitudeNow}° above the horizon`
-          : "below the horizon"
-      }</p>
-      <p class="detail muted">Next new moon ${shortDate(data.nextNewMoon)} ·
-        next full moon ${shortDate(data.nextFullMoon)}</p>
-      ${eclipse}
-    </div>
-  `;
-}
-
-// Render the aurora section from an allSettled result.
-function renderAurora(settled) {
-  if (settled.status === "rejected") {
-    return unavailableCard("Aurora", `Unavailable — ${settled.reason.message}`);
-  }
-
-  const data = settled.value;
-  const probability = data.auroraProbability;
-
-  return `
-    <div class="card">
-      <h3>Aurora</h3>
-      <p class="verdict"><strong>${verdict(probability)}</strong></p>
-      <p class="detail">Probability: ${probability}%</p>
-      <p class="detail muted">Observed ${new Date(
-        data.observationTime
-      ).toLocaleString()}</p>
-    </div>
-  `;
-}
-
-// Map a verdict to a CSS class, so the four levels are visually distinct
-// without relying on colour alone (the word is always there too).
-function verdictClass(verdict) {
-  return `verdict-${verdict.toLowerCase().replace(/\s+/g, "-")}`;
-}
-
-// The combined report: score, headline, and the per-target ladder.
-function renderSummary(data) {
-  // Two scores answer two different questions, so they get equal visual weight
-  // and explicit labels. "Tonight" is actionable — go out or don't. "At its
-  // best" is a stable property of the place — worth a trip or not. Without the
-  // labels a reader would assume the bigger number is just a better version of
-  // the smaller one.
-  const band = (score) =>
-    score >= 70 ? "good" : score >= 45 ? "fair" : score >= 20 ? "poor" : "bad";
-
-  const scoreBox = (value, label, sublabel) =>
-    value === null
-      ? `<div class="score-box">
-           <div class="score score-unknown">--</div>
-           <div class="score-label">${escapeHtml(label)}</div>
-           <div class="score-sub muted">no data</div>
-         </div>`
-      : `<div class="score-box">
-           <div class="score" data-band="${band(value)}">${value}<span class="score-max">/100</span></div>
-           <div class="score-label">${escapeHtml(label)}</div>
-           <div class="score-sub muted">${escapeHtml(sublabel || "")}</div>
-         </div>`;
-
-  // Only worth saying when the gap is real — on a clear new-moon night the two
-  // scores are nearly equal and the comparison is noise.
-  const gap =
-    data.score !== null && data.potentialScore !== null
-      ? data.potentialScore - data.score
-      : null;
-  const gapNote =
-    gap !== null && gap >= 15
-      ? `Tonight is well below what this location can do — conditions, not the site, are the limit.`
-      : gap !== null && gap < 8 && data.potentialScore >= 45
-        ? `Tonight is close to the best this location offers.`
-        : "";
-
-  const scoreBlock = `
-    <div class="scores">
-      ${scoreBox(data.score, "Tonight", "clouds + moon + light")}
-      ${scoreBox(data.potentialScore, "At its best", data.potentialLabel)}
-    </div>
-    ${gapNote ? `<p class="detail muted gap-note">${escapeHtml(gapNote)}</p>` : ""}
-  `;
-
-  // The single most actionable line in the whole report: when to go outside.
-  const window = data.bestWindow
-    ? `<p class="window"><strong>Best window:</strong> ${formatHour(
-        data.bestWindow.start
-      )} to ${formatHour(data.bestWindow.end)} (${data.bestWindow.hours} hr)${
-        data.bestWindow.moonFree ? "" : " — moonlit"
-      }</p>`
-    : `<p class="window muted">No usable window tonight.</p>`;
-
-  // The most concrete line in the report. "About 66 stars" means something to
-  // anyone; "17.15 mag/arcsec²" means something to almost no one.
-  let starsLine = "";
-  if (data.stars) {
-    const s = data.stars;
-    const lost =
-      s.visibleAtBest && s.visibleAtBest > s.visibleTonight
-        ? Math.round(100 * (1 - s.visibleTonight / s.visibleAtBest))
-        : 0;
-
-    // Star counts grow geometrically with limiting magnitude, so even a modest
-    // brightening removes a startling share of them. Worth stating outright.
-    const lostNote =
-      lost >= 15
-        ? ` — about ${lost}% fewer than this site's best of ${s.visibleAtBest.toLocaleString()}`
-        : "";
-
-    starsLine = `
-      <p class="stars">
-        <strong>~${s.visibleTonight.toLocaleString()} stars</strong> visible tonight,
-        down to magnitude ${s.limitingMagnitude}${lostNote}.
+    <div class="rail panel ${railOpen ? "open" : ""}">
+      <p class="rail-title">Layers</p>
+      <label class="layer">
+        <input type="checkbox" id="lp-toggle" ${lightOn ? "checked" : ""} />
+        <span>Light pollution</span>
+      </label>
+      <div class="opacity-row">
+        <label for="lp-opacity">Opacity</label>
+        <input type="range" id="lp-opacity" min="0" max="100"
+               value="${Math.round(lightOpacity * 100)}" />
+      </div>
+      ${legendMarkup()}
+      <label class="layer off">
+        <input type="checkbox" disabled />
+        <span>Aurora <em>coming soon</em></span>
+      </label>
+      <p class="rail-note">
+        Cloud cover and eclipses appear in the location summary — they read
+        better as numbers than as paint spread over a continent.
       </p>
-      <p class="detail muted">For scale, a perfectly dark sky anywhere on Earth
-        shows about ${s.visibleUnderPristineSky.toLocaleString()}.</p>
-    `;
-  }
+    </div>
 
-  // Only mention the moon penalty when it's actually doing damage. Showing
-  // "0.01 magnitudes" would be noise.
-  const moonLine =
-    data.sky.moonPenaltyMagnitudes >= 0.3
-      ? `<p class="detail muted">Moonlight is costing
-         ${data.sky.moonPenaltyMagnitudes} magnitudes — this site reads
-         ${data.sky.baselineSqm} without the Moon, ${data.sky.effectiveSqm} tonight.</p>`
-      : "";
+    <div class="searchwrap">
+      <ul class="suggestions panel" id="suggestions" hidden role="listbox"></ul>
+      <p class="toast panel" id="toast" hidden></p>
+      <div class="search">
+        <span class="glyph" aria-hidden="true">⌕</span>
+        <input id="q" type="text" placeholder="Enter a city, or click the map"
+               autocomplete="off" aria-label="Search for a place"
+               value="${esc(searchText)}" />
+        <span class="divider" aria-hidden="true"></span>
+        <button id="locate" class="locate" type="button"
+                title="Use my current location" aria-label="Use my current location">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" />
+            <circle cx="12" cy="10" r="2.6" />
+          </svg>
+        </button>
+      </div>
+    </div>`;
 
-  const targets = data.targets
+  wire(state);
+}
+
+// The colour key is built from the server's palette, so it cannot drift out of
+// sync with what the tiles actually draw.
+function legendMarkup() {
+  if (!legendStops) return "";
+  const swatches = [...legendStops]
+    .reverse() // darkest first — "where is it good?" is the question being asked
     .map(
-      (target) => `
-        <li class="${verdictClass(target.verdict)}">
-          <span class="target-verdict">${escapeHtml(target.verdict)}</span>
-          <span class="target-name">${escapeHtml(target.name)}</span>
-          <span class="target-reason">${escapeHtml(target.reason)}</span>
-        </li>`
+      (stop) =>
+        `<span class="swatch"><span class="chip" style="background:${esc(stop.colour)}"></span>${stop.sqm.toFixed(1)}</span>`
     )
     .join("");
+  return `<div class="legend">
+            <div class="swatches">${swatches}</div>
+            <p class="legend-note">Sky brightness, mag/arcsec² — higher is darker.</p>
+          </div>`;
+}
+
+function infoBody(state) {
+  if (state.error) {
+    return `<p class="eyebrow">Couldn't read the sky</p>
+            <p class="lede">${esc(state.error)}</p>`;
+  }
+  if (state.loading) {
+    return `<p class="eyebrow">Reading the sky</p>
+            <h2 class="display info-title">${esc(state.label || "")}</h2>
+            <p class="lede">Checking cloud cover, moonlight and light pollution…</p>`;
+  }
+  if (!report) return "";
+
+  const d = report;
+  const stars = d.stars;
+  const moon = d.sources?.moon;
+  const eclipse = formatEclipse(moon?.upcomingEclipse);
 
   return `
-    <div class="summary">
-      ${scoreBlock}
-      <p class="headline">${escapeHtml(data.headline)}</p>
-      ${window}
-      ${starsLine}
-      ${moonLine}
-      <ul class="targets">${targets}</ul>
+    <p class="eyebrow">${esc(d.potentialLabel || "")}</p>
+    <h2 class="display info-title">${esc(d.label)}</h2>
+
+    <div class="scoreline">
+      <div class="scorebox">
+        <div class="n" data-band="${scoreBand(d.score)}">${d.score ?? "—"}</div>
+        <div class="k">Tonight</div>
+      </div>
+      <div class="scorebox">
+        <div class="n" data-band="${scoreBand(d.potentialScore)}">${d.potentialScore ?? "—"}</div>
+        <div class="k">At its best</div>
+      </div>
     </div>
-  `;
-}
 
-// One request, one answer. The backend fans out to every source in parallel and
-// does the combining, which is why this is a single fetch rather than three:
-// the fan-out moved server-side where it belongs, and the browser no longer
-// needs to know how many sources exist. Adding a fifth source later changes
-// nothing here.
-async function showSkyReportForCoords(lat, lon, label) {
-  setStatus(`Checking the sky for ${label}...`);
-  resultsEl.hidden = true;
+    <p class="headline">${esc(d.headline)}</p>
 
-  try {
-    const data = await fetchJson(`/api/sky?lat=${lat}&lon=${lon}`);
-
-    // Order matters for reading, not for fetching. Clouds first because they
-    // can veto the whole night, then light pollution (a fixed property of the
-    // place), then aurora (the thing you might travel for).
-    resultsEl.innerHTML = `
-      <h2>${escapeHtml(label)}</h2>
-      ${renderSummary(data)}
-      <h4 class="detail-heading">Where that came from</h4>
-      ${renderClouds(asSettled(data.sources.clouds))}
-      ${renderMoon(asSettled(data.sources.moon))}
-      ${renderLightPollution(asSettled(data.sources.lightPollution))}
-      ${renderAurora(asSettled(data.sources.aurora))}
-    `;
-    resultsEl.hidden = false;
-    setStatus("");
-  } catch (err) {
-    // Only reached if /api/sky itself fails. Individual source failures come
-    // back inside a successful response and degrade card by card.
-    setStatus(`Could not get sky data: ${err.message}`);
-  }
-}
-
-// --- 4. Path A: user typed a city name. ---
-async function searchByName(query) {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    setStatus("Type a city name first.");
-    return;
-  }
-
-  setStatus(`Looking up "${trimmed}"...`);
-
-  try {
-    // encodeURIComponent keeps spaces/accents from breaking the URL.
-    const response = await fetch(
-      `/api/geocode?q=${encodeURIComponent(trimmed)}`
-    );
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Geocoding failed");
-    }
-    if (data.results.length === 0) {
-      setStatus(`No place found for "${trimmed}".`);
-      return;
+    ${
+      d.bestWindow
+        ? `<p class="window mono">BEST WINDOW · ${formatHour(d.bestWindow.start)}–${formatHour(d.bestWindow.end)}
+             <span class="dim">${d.bestWindow.hours} hr${d.bestWindow.moonFree ? "" : ", moonlit"}</span></p>`
+        : `<p class="window mono dim">NO USABLE WINDOW TONIGHT</p>`
     }
 
-    // Take the best (first) match and hand its coordinates to the shared step.
-    const place = data.results[0];
-    const label = [place.name, place.region, place.country]
-      .filter(Boolean) // drop any undefined pieces
-      .join(", ");
-    showSkyReportForCoords(place.lat, place.lon, label);
-  } catch (err) {
-    setStatus(`Lookup failed: ${err.message}`);
+    <ul class="targets">
+      ${d.targets
+        .map(
+          (t) =>
+            `<li><span>${esc(t.name)}</span><span class="v" data-v="${esc(t.verdict)}">${esc(t.verdict)}</span></li>`
+        )
+        .join("")}
+    </ul>
+
+    <div class="readout mono">
+      ${row("Cloud cover", formatCloud(d.sources?.clouds))}
+      ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
+      ${row("Stars visible", stars ? `${formatCount(stars.visibleTonight)} · to mag ${stars.limitingMagnitude}` : "—")}
+      ${row("Moon", moon?.dataAvailable ? `${moon.phaseName} · ${moon.illuminatedFraction}% lit` : "—")}
+      ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
+      ${eclipse ? row("Lunar eclipse", eclipse) : ""}
+    </div>
+
+    <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
+}
+
+const row = (key, value) =>
+  `<div class="r"><span class="rk">${esc(key)}</span><span class="rv">${esc(value)}</span></div>`;
+
+// --- wiring -----------------------------------------------------------------
+
+function wire(state) {
+  const input = ui.querySelector("#q");
+  const list = ui.querySelector("#suggestions");
+  const wrap = ui.querySelector(".searchwrap");
+
+  let timer;
+  input.addEventListener("input", () => {
+    searchText = input.value;
+    clearTimeout(timer);
+    timer = setTimeout(() => suggest(input.value, list), 250);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      list.hidden = true;
+      search(input.value);
+    }
+    if (event.key === "Escape") {
+      list.hidden = true;
+      input.blur();
+    }
+  });
+
+  list.addEventListener("click", (event) => {
+    const item = event.target.closest("li");
+    if (!item) return;
+    list.hidden = true;
+    select(Number(item.dataset.lat), Number(item.dataset.lon), item.dataset.label);
+  });
+
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!wrap.contains(event.target)) list.hidden = true;
+    },
+    { once: true }
+  );
+
+  // Hover opens the rail on a pointer device; tap opens it on touch. Without
+  // the tap fallback the layer controls are unreachable on a phone.
+  const rail = ui.querySelector(".rail");
+  rail.addEventListener("click", (event) => {
+    if (event.target.tagName === "INPUT" || event.target.tagName === "LABEL") return;
+    railOpen = !railOpen;
+    rail.classList.toggle("open", railOpen);
+  });
+
+  ui.querySelector("#lp-toggle").addEventListener("change", (event) => {
+    lightOn = event.target.checked;
+    if (!map || !lightLayer) return;
+    lightOn ? lightLayer.addTo(map) : map.removeLayer(lightLayer);
+  });
+
+  ui.querySelector("#lp-opacity").addEventListener("input", (event) => {
+    lightOpacity = Number(event.target.value) / 100;
+    if (lightLayer) lightLayer.setOpacity(lightOpacity);
+  });
+
+  ui.querySelector(".menu").addEventListener("click", () => {
+    infoOpen = !infoOpen;
+    render({});
+    recentre();
+  });
+
+  ui.querySelector("#locate").addEventListener("click", useMyLocation);
+
+  if (state && state.keepFocus) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 }
 
-// --- 5. Path B: user clicked "Use my location" (a location ping). ---
+// A short message above the search bar. Positioned out of flow, like the
+// suggestions list, so showing it can never shift the bar.
+let toastTimer;
+function toast(message, ms = 4000) {
+  const el = ui.querySelector("#toast");
+  if (!el) return;
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), ms);
+}
+
+// --- location ---------------------------------------------------------------
+
+// Browsers only expose geolocation over HTTPS or on localhost.
 function useMyLocation() {
-  // navigator.geolocation is the browser's built-in GPS access.
+  const button = ui.querySelector("#locate");
+
   if (!navigator.geolocation) {
-    setStatus("Your browser doesn't support location access.");
+    toast("This browser can't share a location.");
     return;
   }
 
-  setStatus("Requesting your location...");
+  // A permission prompt or GPS fix takes seconds. Without a visible working
+  // state the first tap reads as a dead button.
+  button.classList.add("busy");
+  button.setAttribute("aria-busy", "true");
+  toast("Asking your browser for your location…", 12000);
+
+  const finish = () => {
+    button.classList.remove("busy");
+    button.removeAttribute("aria-busy");
+  };
 
   navigator.geolocation.getCurrentPosition(
-    // Success: we get the user's coordinates.
     (position) => {
+      finish();
+      const el = ui.querySelector("#toast");
+      if (el) el.hidden = true;
       const { latitude, longitude } = position.coords;
-      showSkyReportForCoords(
-        latitude.toFixed(4),
-        longitude.toFixed(4),
-        "your location"
-      );
+      select(Number(latitude.toFixed(4)), Number(longitude.toFixed(4)), "Your location");
     },
-    // Failure: they denied permission or it timed out.
-    () => {
-      setStatus("Couldn't get your location (permission denied?).");
-    }
+    (err) => {
+      finish();
+      // Name the cause. "Location unavailable" is not actionable; "you denied
+      // permission" tells someone exactly what to change.
+      const reason =
+        err.code === err.PERMISSION_DENIED
+          ? "Location permission was denied. Search for a place instead."
+          : err.code === err.TIMEOUT
+            ? "Timed out finding your location. Try again, or search for a place."
+            : "Couldn't determine your location. Search for a place instead.";
+      toast(reason, 6000);
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
   );
 }
 
-// --- 5b. Autocomplete: suggest real cities as the user types. ---
-
-// "Debounce" delays a function until the user stops typing for `delayMs`.
-// Without it, we'd fire a geocode request on EVERY keystroke. With it, we
-// wait for a short pause, then send a single request.
-function debounce(fn, delayMs) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
-  };
-}
-
-// Hide and empty the dropdown.
-function hideSuggestions() {
-  suggestionsEl.hidden = true;
-  suggestionsEl.innerHTML = "";
-}
-
-// When a suggestion is chosen: fill the box, close the list, fetch aurora.
-function selectPlace(place, label) {
-  placeInput.value = label;
-  hideSuggestions();
-  showSkyReportForCoords(place.lat, place.lon, label);
-}
-
-// Build the dropdown <li> items from a list of places.
-function renderSuggestions(results) {
-  if (!results || results.length === 0) {
-    hideSuggestions();
+async function suggest(text, list) {
+  if (!text.trim() || parseCoordinates(text)) {
+    list.hidden = true;
     return;
   }
-
-  suggestionsEl.innerHTML = ""; // clear old items
-
-  results.forEach((place) => {
-    const label = [place.name, place.region, place.country]
-      .filter(Boolean)
-      .join(", ");
-
-    // createElement builds a real DOM node we can attach behavior to.
-    const li = document.createElement("li");
-    li.textContent = label;
-    li.addEventListener("click", () => selectPlace(place, label));
-    suggestionsEl.appendChild(li);
-  });
-
-  suggestionsEl.hidden = false;
-}
-
-// Ask the backend for matches, then show them.
-async function fetchSuggestions(query) {
   try {
-    const response = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-    const data = await response.json();
-    if (!response.ok) return; // ignore errors here; the Search button still works
-
-    // Stale-response guard: if the user kept typing, the box no longer matches
-    // this (older) request, so ignore it. Prevents a slow, earlier response
-    // from overwriting newer suggestions.
-    if (data.query !== placeInput.value.trim()) return;
-
-    renderSuggestions(data.results);
-  } catch {
-    // Suggestions are a convenience; if they fail, stay silent.
-  }
-}
-
-// --- 5c. Map picker: click a point to use it as the location. ---
-
-const mapBtn = document.getElementById("map-btn");
-const mapPanel = document.getElementById("map-panel");
-const overlayToggle = document.getElementById("overlay-toggle");
-const opacityInput = document.getElementById("overlay-opacity");
-const legendEl = document.getElementById("legend");
-
-let overlayLayer = null;
-
-const LEAFLET_VERSION = "1.9.4";
-const LEAFLET_CSS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`;
-const LEAFLET_JS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`;
-
-let mapInstance = null;
-let mapMarker = null;
-let leafletLoading = null;
-
-// Load a stylesheet or script and resolve once the browser reports it ready.
-// Wrapping the callback-based load events in a Promise lets the caller use
-// plain await instead of nesting onload handlers.
-function loadAsset(tag, attributes) {
-  return new Promise((resolve, reject) => {
-    const element = document.createElement(tag);
-    Object.assign(element, attributes);
-    element.onload = () => resolve();
-    element.onerror = () => reject(new Error(`Could not load ${attributes.src || attributes.href}`));
-    document.head.appendChild(element);
-  });
-}
-
-// Fetch Leaflet once, on first use.
-//
-// The promise itself is cached rather than a boolean flag. If someone taps the
-// button twice in quick succession, both calls await the SAME in-flight load
-// instead of starting a second one — a small race that would otherwise
-// initialise the map twice.
-function loadLeaflet() {
-  if (window.L) return Promise.resolve();
-  if (leafletLoading) return leafletLoading;
-
-  leafletLoading = Promise.all([
-    loadAsset("link", { rel: "stylesheet", href: LEAFLET_CSS }),
-    loadAsset("script", { src: LEAFLET_JS }),
-  ]);
-
-  return leafletLoading;
-}
-
-// Ask our backend what a coordinate is called. Purely cosmetic: if it fails or
-// the spot has no name (open ocean, wilderness), we show coordinates instead.
-async function labelForCoords(lat, lon) {
-  const fallback = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-  try {
-    const data = await fetchJson(
-      `/api/reverse-geocode?lat=${lat}&lon=${lon}`
-    );
-    return data.label || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-async function handleMapClick(rawLat, rawLon) {
-  // Leaflet reports the longitude of whichever WORLD COPY was clicked, so
-  // panning east past the dateline yields 190, 480, 730 — all the same place,
-  // but all rejected by our API's -180..180 validation. Wrap before doing
-  // anything else.
-  //
-  // The marker is placed at the RAW coordinates so it stays under the cursor
-  // on whichever copy of the world you clicked; only the values we send onward
-  // are normalized.
-  const { lat, lon } = normalizeCoords(rawLat, rawLon);
-
-  // Move the marker immediately. Waiting for the name first would leave the map
-  // feeling unresponsive for the second or so Nominatim can take.
-  if (mapMarker) {
-    mapMarker.setLatLng([rawLat, rawLon]);
-  } else {
-    mapMarker = window.L.marker([rawLat, rawLon]).addTo(mapInstance);
-  }
-
-  const rough = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-  placeInput.value = rough;
-  setStatus(`Checking the sky for ${rough}...`);
-
-  // Start both at once: the sky report does not depend on the place name, so
-  // making it wait for one would be pure added latency.
-  const [label] = await Promise.all([
-    labelForCoords(lat, lon),
-    showSkyReportForCoords(lat, lon, rough),
-  ]);
-
-  // Then upgrade the heading and the search box to the friendly name.
-  placeInput.value = label;
-  const heading = resultsEl.querySelector("h2");
-  if (heading) heading.textContent = label;
-}
-
-// Build the colour key from the server's palette, so the legend and the tiles
-// are guaranteed to describe the same thing.
-async function buildLegend() {
-  try {
-    const data = await fetchJson("/api/lightpollution/tile/legend");
-
-    // Reverse so the key reads darkest-first, matching how people think about
-    // it ("where is it good?") rather than how the palette is stored.
-    const swatches = [...data.stops]
-      .reverse()
-      .map(
-        (stop) => `
-        <span class="swatch">
-          <span class="swatch-colour" style="background:${escapeHtml(stop.colour)}"></span>
-          ${stop.sqm.toFixed(1)}
-        </span>`
-      )
+    const data = await getJson(`/api/geocode?q=${encodeURIComponent(text)}`);
+    if (!data.results.length) {
+      list.hidden = true;
+      return;
+    }
+    list.innerHTML = data.results
+      .map((place) => {
+        const label = [place.name, place.region, place.country].filter(Boolean).join(", ");
+        return `<li role="option" data-lat="${place.lat}" data-lon="${place.lon}"
+                    data-label="${esc(label)}">${esc(label)}</li>`;
+      })
       .join("");
-
-    legendEl.innerHTML = `
-      <div class="swatches">${swatches}</div>
-      <p class="detail muted">
-        Sky brightness (mag/arcsec²) — higher is darker.
-        ${escapeHtml(data.source)} — ${escapeHtml(data.license)}.
-        Below ~7 km the data is upscaled, not sharper.
-      </p>
-    `;
-    legendEl.hidden = false;
+    list.hidden = false;
   } catch {
-    // A missing legend is cosmetic; the map still works without it.
-    legendEl.hidden = true;
+    // Suggestions are a convenience. If they fail, the search button still works.
+    list.hidden = true;
   }
 }
 
-async function initMap() {
-  await loadLeaflet();
+async function search(text) {
+  const coords = parseCoordinates(text);
+  if (coords) return select(coords.lat, coords.lon, `(${coords.lat}, ${coords.lon})`);
+  if (!text.trim()) return;
 
-  mapInstance = window.L.map("map").setView([39.5, -98.35], 4); // continental US
+  try {
+    const data = await getJson(`/api/geocode?q=${encodeURIComponent(text)}`);
+    if (!data.results.length) {
+      toast(`No place found for "${text.trim()}".`);
+      return;
+    }
+    const place = data.results[0];
+    select(place.lat, place.lon, [place.name, place.region, place.country].filter(Boolean).join(", "));
+  } catch (err) {
+    infoOpen = true;
+    render({ error: err.message });
+  }
+}
 
-  // OSM's tile policy requires this attribution to be visible and not hidden
-  // behind a toggle. Leaflet renders it bottom-right by default.
-  window.L.tileLayer(`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`, {
+// --- map centring -----------------------------------------------------------
+
+// How much of the viewport the summary panel covers, in pixels. Zero when it is
+// closed, or when it goes full-width on a phone (no uncovered area to centre in).
+function panelOffset() {
+  const el = ui.querySelector(".info");
+  if (!el || !el.classList.contains("open")) return 0;
+  const width = el.getBoundingClientRect().width;
+  return width >= window.innerWidth * 0.9 ? 0 : width;
+}
+
+// Put a coordinate in the middle of the VISIBLE map — the strip beside the
+// summary panel — rather than the middle of the map element, which the panel is
+// covering.
+//
+// Done in projected pixel space. Nudging lat/lon directly would be wrong: a
+// given number of pixels is a different number of degrees at every latitude, so
+// an offset tuned for Chicago would misbehave in Tromsø.
+function offsetLatLng(lat, lon, zoom) {
+  const offset = panelOffset();
+  if (!offset || !map) return L.latLng(lat, lon);
+  const point = map.project([lat, lon], zoom).subtract([offset / 2, 0]);
+  return map.unproject(point, zoom);
+}
+
+function recentre() {
+  if (!map || !lastPoint) return;
+  const zoom = map.getZoom();
+  map.panTo(offsetLatLng(lastPoint.lat, lastPoint.lon, zoom), { animate: true, duration: 0.4 });
+}
+
+// --- selecting a location ----------------------------------------------------
+
+async function select(lat, lon, label) {
+  infoOpen = true;
+  report = null;
+  lastPoint = { lat, lon };
+  searchText = label;
+
+  render({ loading: true, label });
+
+  if (map) {
+    if (marker) marker.setLatLng([lat, lon]);
+    else
+      marker = L.circleMarker([lat, lon], {
+        radius: 7,
+        color: "#b83533",
+        fillColor: "#cf7994",
+        weight: 2,
+        fillOpacity: 0.5,
+      }).addTo(map);
+
+    const zoom = Math.max(map.getZoom(), 7);
+    // Wait a frame so the panel has begun opening and its width is measurable.
+    requestAnimationFrame(() => map.flyTo(offsetLatLng(lat, lon, zoom), zoom, { duration: 0.9 }));
+  }
+
+  try {
+    const sky = await getJson(`/api/sky?lat=${lat}&lon=${lon}`);
+    report = { ...sky, label };
+    render({});
+
+    // The place name arrives late and never blocks the report.
+    getJson(`/api/reverse-geocode?lat=${lat}&lon=${lon}`)
+      .then((result) => {
+        if (result.label && report) {
+          report.label = result.label;
+          searchText = result.label;
+          render({});
+        }
+      })
+      .catch(() => {});
+  } catch (err) {
+    render({ error: err.message });
+  }
+}
+
+// --- map --------------------------------------------------------------------
+
+function initMap() {
+  map = L.map("map", { zoomControl: false }).setView([39.5, -98.35], 4);
+
+  // Three layers, not two. The basemap is split into its unlabelled and
+  // labels-only halves so the light pollution data can sit BETWEEN them —
+  // labels then draw over the overlay at full strength, and the overlay opacity
+  // can run high without hiding a single place name.
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png", {
     maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(mapInstance);
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(map);
 
-  // Our own tiles, rendered from the light pollution grid.
-  //
-  // maxNativeZoom matters here. The grid is ~7 km per cell, so past zoom 8 a
-  // tile would just be the same few cells blown up. Telling Leaflet the native
-  // limit makes it stop requesting new tiles and upscale the last real ones
-  // instead — the map goes visibly soft rather than inventing crisp detail that
-  // the data does not support. Honest, and it saves pointless work.
-  overlayLayer = window.L.tileLayer("/api/lightpollution/tile/{z}/{x}/{y}.png", {
+  lightLayer = L.tileLayer("/api/lightpollution/tile/{z}/{x}/{y}.png", {
     maxZoom: 18,
+    // The grid is ~7 km per cell. Past zoom 8 Leaflet upscales rather than
+    // requesting detail the data cannot support — honest, and it saves work.
     maxNativeZoom: 8,
-    opacity: Number(opacityInput.value) / 100,
+    opacity: lightOpacity,
     attribution:
       'Light pollution: <a href="https://doi.org/10.5880/GFZ.1.4.2016.001">Falchi et al. 2016</a> (CC BY-NC 4.0)',
   });
+  if (lightOn) lightLayer.addTo(map);
 
-  if (overlayToggle.checked) overlayLayer.addTo(mapInstance);
+  map.createPane("labels");
+  map.getPane("labels").style.zIndex = 650;
+  map.getPane("labels").style.pointerEvents = "none";
 
-  mapInstance.on("click", (event) => {
-    handleMapClick(event.latlng.lat, event.latlng.lng);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    pane: "labels",
+  }).addTo(map);
+
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+
+  map.on("click", (event) => {
+    // Leaflet reports the longitude of whichever world copy was clicked, so
+    // panning past the dateline yields values outside -180..180.
+    const { lat, lon } = normalizeCoords(event.latlng.lat, event.latlng.lng);
+    select(lat, lon, `(${lat.toFixed(3)}, ${lon.toFixed(3)})`);
   });
-
-  buildLegend();
 }
 
-async function toggleMap() {
-  const opening = mapPanel.hidden;
-  mapPanel.hidden = !opening;
-  mapBtn.setAttribute("aria-expanded", String(opening));
-  mapBtn.textContent = opening ? "Hide map" : "Pick on map";
-
-  if (!opening) return;
-
-  if (!mapInstance) {
-    setStatus("Loading map...");
-    try {
-      await initMap();
-      setStatus("");
-    } catch (err) {
-      setStatus(`Could not load the map: ${err.message}`);
-      mapPanel.hidden = true;
-      mapBtn.setAttribute("aria-expanded", "false");
-      mapBtn.textContent = "Pick on map";
-      return;
-    }
+async function loadLegend() {
+  try {
+    const data = await getJson("/api/lightpollution/tile/legend");
+    legendStops = data.stops;
+    render({});
+  } catch {
+    // The map works fine without a colour key.
   }
-
-  // Leaflet measures its container on creation. If the panel was hidden at that
-  // moment the map believes it is 0x0 and renders a grey box with tiles in the
-  // wrong place. invalidateSize() re-measures now that the panel is visible.
-  mapInstance.invalidateSize();
 }
 
-// --- 6. Wire up the events. ---
+// --- intro ------------------------------------------------------------------
 
-// Submitting the form (Search button OR pressing Enter).
-form.addEventListener("submit", (event) => {
-  event.preventDefault(); // stop the browser from reloading the page
-  hideSuggestions();
-  handleSearch(placeInput.value);
-});
-
-// Clicking "Use my location".
-locateBtn.addEventListener("click", useMyLocation);
-
-// Opening and closing the map picker.
-mapBtn.addEventListener("click", toggleMap);
-
-// Overlay on/off. Guarded because these fire before the map is built if someone
-// touches the controls in the moment between opening the panel and Leaflet
-// finishing its load.
-overlayToggle.addEventListener("change", () => {
-  if (!overlayLayer || !mapInstance) return;
-  if (overlayToggle.checked) {
-    overlayLayer.addTo(mapInstance);
-  } else {
-    mapInstance.removeLayer(overlayLayer);
+function hideEntry() {
+  entry.hidden = true;
+  try {
+    localStorage.setItem(SEEN_KEY, "1");
+  } catch {
+    // Private browsing can block storage. Showing the intro again is harmless.
   }
-  legendEl.hidden = !overlayToggle.checked;
-  opacityInput.disabled = !overlayToggle.checked;
+}
+
+document.getElementById("entry-proceed").addEventListener("click", () => {
+  lightOn = document.getElementById("entry-light").checked;
+  if (map && lightLayer) lightOn ? lightLayer.addTo(map) : map.removeLayer(lightLayer);
+  hideEntry();
+  render({});
 });
 
-// Opacity. setOpacity only restyles the tiles already on screen — it does not
-// re-request anything, which is exactly why the tiles are rendered opaque and
-// blended here rather than baked with alpha on the server.
-opacityInput.addEventListener("input", () => {
-  if (overlayLayer) overlayLayer.setOpacity(Number(opacityInput.value) / 100);
+entry.addEventListener("click", (event) => {
+  if (event.target === entry) hideEntry();
 });
 
-// As the user types, fetch suggestions — debounced so we don't spam the
-// server. Skip it when the box is empty or already holds coordinates.
-placeInput.addEventListener(
-  "input",
-  debounce(() => {
-    const text = placeInput.value.trim();
-    if (!text || parseCoordinates(text)) {
-      hideSuggestions();
-      return;
-    }
-    fetchSuggestions(text);
-  }, 250)
-);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !entry.hidden) hideEntry();
+});
 
-// Close the dropdown on Escape, or when clicking outside the input area.
-placeInput.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") hideSuggestions();
+// --- boot -------------------------------------------------------------------
+
+window.addEventListener("error", (event) => {
+  console.error(event.error || event);
+  notice("Something went wrong. Try reloading the page.", 0);
 });
-document.addEventListener("click", (event) => {
-  if (!event.target.closest(".input-wrap")) hideSuggestions();
-});
+
+// Interface first, unconditionally. Then the map, which is allowed to fail.
+render({});
+
+let introSeen = false;
+try {
+  introSeen = localStorage.getItem(SEEN_KEY) === "1";
+} catch {
+  introSeen = false;
+}
+if (!introSeen) entry.hidden = false;
+
+try {
+  if (typeof L === "undefined") throw new Error("Leaflet did not load");
+  initMap();
+  loadLegend();
+} catch (err) {
+  console.error(err);
+  notice("The map couldn't load, but search still works.", 0);
+}

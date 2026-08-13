@@ -3,67 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LightMatter</title>
+  <title>LightMatter — what's visible in the sky tonight</title>
+  <meta
+    name="description"
+    content="Enter a location and see what's actually visible in the sky tonight: cloud cover, light pollution, moonlight and aurora, combined into one answer."
+  />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main>
-    <h1>LightMatter</h1>
-    <p class="tagline">See what's viewable in the sky from anywhere.</p>
 
-    <!-- Location input. A <form> lets the user press Enter to submit. -->
-    <form id="location-form">
-      <div class="input-wrap">
-        <input
-          id="place-input"
-          type="text"
-          placeholder="Enter a city or (lat, lon)"
-          autocomplete="off"
-        />
-        <ul id="suggestions" class="suggestions" hidden></ul>
-      </div>
-      <button type="submit">Search</button>
-      <button type="button" id="locate-btn">Use my location</button>
-      <button type="button" id="map-btn" aria-expanded="false" aria-controls="map-panel">
-        Pick on map
-      </button>
-    </form>
+  <!-- The map sits underneath everything. Chrome is rendered by app.js BEFORE
+       the map is initialised, so a Leaflet or network failure leaves a usable
+       interface rather than a blank page. -->
+  <div id="map" aria-label="Map of sky conditions"></div>
 
-    <!-- The map panel. Empty until the button is pressed: Leaflet's script,
-         stylesheet, and map tiles are all loaded on first open, so visitors who
-         never use the map never download any of it. -->
-    <section id="map-panel" class="map-panel" hidden>
-      <p class="detail muted">Click anywhere to check the sky there.</p>
+  <main id="ui"></main>
 
-      <div class="map-controls">
-        <label class="control">
-          <input type="checkbox" id="overlay-toggle" checked />
-          Light pollution overlay
-        </label>
-        <label class="control" id="opacity-control">
-          Opacity
-          <input type="range" id="overlay-opacity" min="0" max="100" value="65" />
-        </label>
-      </div>
+  <!-- First-visit explainer. Dismissal is remembered, so it never nags. -->
+  <div id="entry" class="entry" hidden>
+    <div class="entry-card" role="dialog" aria-modal="true" aria-labelledby="entry-title">
+      <p class="eyebrow">Before you start</p>
+      <h1 class="display" id="entry-title">
+        Find out what's <em>actually</em><br />visible tonight.
+      </h1>
+      <p class="lede">
+        Enter a place, use your location, or click the map. LightMatter combines
+        cloud cover, light pollution, moonlight and aurora activity into a single
+        answer — and tells you the best window to go outside.
+      </p>
+      <fieldset class="entry-toggles">
+        <legend>Start with these layers</legend>
+        <label><input type="checkbox" id="entry-light" checked /> Light pollution</label>
+        <label class="off"><input type="checkbox" disabled /> Aurora — coming soon</label>
+      </fieldset>
+      <button class="primary" id="entry-proceed">Open the map</button>
+    </div>
+  </div>
 
-      <div id="map"></div>
+  <!-- Surfaces failures instead of leaving a silent blank page. -->
+  <div id="notice" class="notice" role="status" hidden></div>
 
-      <!-- Legend is built from the same palette the server draws tiles with,
-           fetched at runtime so the two can never drift apart. -->
-      <div id="legend" class="legend" hidden></div>
-    </section>
-
-    <!-- Short status/error messages appear here. -->
-    <p id="status" class="status"></p>
-
-    <!-- Results get built into this box by app.js. -->
-    <section id="results" class="results" hidden></section>
-  </main>
-
-  <!-- Pure coordinate helpers, loaded first so app.js can use them.
-       Kept separate because they have no DOM dependencies, which lets the
-       Node test suite require() and cover them. -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Pure modules first — no DOM access, covered by the test suite. -->
   <script src="coords.js"></script>
+  <script src="format.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
