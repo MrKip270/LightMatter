@@ -1,0 +1,38 @@
+Main page:
+ - interactive map (dark color globe)
+    - dark colors
+    - light pollution overlayed
+        - single color with grid (large dataset to provide more visually pleasing ui to users)
+    - aroura overlayed
+    - shows "total eclipse" path overlayed
+        - lunar elcipse has moon icoon repeated through path
+        - solar eclipse has sun icon repeated through path
+    - cloud coverage overlayed
+    - toggles sit in a sidebar on the far right of the screen
+        - tranparent bar
+            - 5% of screens width
+            - 50% or screens height
+            - on hover
+                - slides over to reveal all toggles
+    - logo and name in top right corner, only takes up the corner
+    - 3 line button in top left to toggle a pages dropdown
+        - pushes information box over (if open)
+        - includes about page
+        -
+    - bubble search bar
+        - heigh = 15% from bottom of page
+        - width = 50% (center of page)
+        - moves to center center of page once text is inputted
+            - dropdown of autofill locations directly beneath that
+            - upon enter, of a location, panns user view to location on map and opens information box
+    - location information box
+        - located on left of page, takes up full height of page
+        - takes up 35% of page width from left
+        - shows nightly score, overall score, visibily info, brief description of why veiwing is low or heigh
+            - reccomends nearest location with nightly score over some threashold, nearest location with overall score over some threashold
+- upon entry
+    - popup in the middle of screen, takes up 40% of screen
+        - couple senteces explaining how to use website
+        - all overlays toggled off, but displayed and allows users to toggle them on before entry
+        - procced to map button (also works on click outside of popup)
+    
