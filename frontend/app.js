@@ -71,7 +71,7 @@ function render(state = {}) {
       <span class="logo-word">LightMatter</span>
     </div>
 
-    <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite">
+    <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite" aria-label="Location summary">
       ${infoBody(state)}
     </aside>
 
@@ -535,6 +535,7 @@ async function loadLegend() {
 
 function hideEntry() {
   entry.hidden = true;
+  document.getElementById("q")?.focus();
   try {
     localStorage.setItem(SEEN_KEY, "1");
   } catch {

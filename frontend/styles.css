@@ -70,7 +70,7 @@
 html, body {
   margin: 0;
   height: 100%;
-  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--ink);
   color: var(--text);
   font-family: var(--body);
@@ -92,7 +92,7 @@ html, body {
 .leaflet-container { background: var(--ink); }
 
 .leaflet-control-attribution {
-  background: rgba(13, 7, 17, 0.78) !important;
+  background: color-mix(in srgb, var(--panel) 78%, transparent) !important;
   color: var(--text-faint) !important;
   font-family: var(--data);
   font-size: 10px;
@@ -607,7 +607,7 @@ button { cursor: pointer; }
 
 .primary {
   background: var(--brick);
-  color: #180a0a;
+  color: var(--oxblood);
   border: none;
   border-radius: 999px;
   padding: 0.75rem 1.5rem;
