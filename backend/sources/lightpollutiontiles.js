@@ -138,7 +138,12 @@ function sampleSqm(lat, lon) {
 // panning re-requests neighbours constantly. Caching the encoded buffers makes
 // repeat views free.
 const tileCache = new Map();
-const TILE_CACHE_LIMIT = 2000; // ~2 MB of PNG at typical tile sizes
+// Bilinear sampling made tiles roughly 13x larger — smooth gradients compress
+// far worse than flat blocks (a Chicago z7 tile went from 5.7 KB to 76 KB). The
+// limit dropped accordingly, from 2000 to 400, to keep the cache around 30 MB
+// rather than 150 MB. Worth knowing that "make it look smoother" had a real
+// bandwidth cost attached.
+const TILE_CACHE_LIMIT = 400;
 
 // --- Rendering --------------------------------------------------------------------
 
@@ -160,45 +165,94 @@ function renderTile(z, x, y) {
   // Hoist everything that does not vary per pixel out of the inner loop.
   //
   // A tile is 65,536 pixels, but there are only 256 distinct longitudes and 256
-  // distinct latitudes in it. Computing the grid column for every pixel meant
-  // doing the same 256 divisions 256 times each. Precomputing both axes turns
-  // the inner loop into two array reads and a lookup — the difference between
-  // ~78ms and single-digit milliseconds per tile.
-  const gridCols = new Int32Array(TILE_SIZE);
+  // distinct latitudes in it, so the axis maths is done 256 times per axis
+  // rather than 65,536 times. That alone took a tile from ~78ms to ~8ms.
+  //
+  // BILINEAR SAMPLING. Nearest-neighbour made every 4-arcmin cell a hard-edged
+  // block, which reads as false precision — the underlying model is a smooth
+  // field (light scatters over 100+ km), so the blockiness was an artefact of
+  // our storage grid rather than anything in the data. Each pixel now blends
+  // the four surrounding cells by distance. Doing it in the renderer rather
+  // than with a CSS blur matters: a CSS filter is applied per tile, so it would
+  // smear each tile independently and leave visible seams at every boundary.
+  //
+  // The -0.5 shifts from "cell corner" to "cell centre", which is what the
+  // stored value actually represents.
+  const col0 = new Int32Array(TILE_SIZE);
+  const col1 = new Int32Array(TILE_SIZE);
+  const colT = new Float32Array(TILE_SIZE);
+
   for (let pixelX = 0; pixelX < TILE_SIZE; pixelX++) {
     const lon = pixelToLon(z, x, pixelX);
-    const col = Math.floor((lon - meta.originX) / meta.resX);
-    gridCols[pixelX] = col >= 0 && col < meta.width ? col : -1;
+    const exact = (lon - meta.originX) / meta.resX - 0.5;
+    const base = Math.floor(exact);
+    colT[pixelX] = exact - base;
+    // Longitude wraps: the column left of 0 is the last column, since the
+    // grid spans the whole globe east to west.
+    col0[pixelX] = ((base % meta.width) + meta.width) % meta.width;
+    col1[pixelX] = ((base + 1) % meta.width + meta.width) % meta.width;
   }
 
-  const gridRows = new Int32Array(TILE_SIZE);
+  const row0 = new Int32Array(TILE_SIZE);
+  const row1 = new Int32Array(TILE_SIZE);
+  const rowT = new Float32Array(TILE_SIZE);
+  const rowValid = new Uint8Array(TILE_SIZE);
+
   for (let pixelY = 0; pixelY < TILE_SIZE; pixelY++) {
     const lat = pixelToLat(z, y, pixelY);
-    const row = Math.floor((lat - meta.originY) / meta.resY); // resY is negative
-    gridRows[pixelY] = row >= 0 && row < meta.height ? row : -1;
+    const exact = (lat - meta.originY) / meta.resY - 0.5; // resY is negative
+    const base = Math.floor(exact);
+
+    // Latitude does NOT wrap — the poles are ends, not seams — so rows clamp.
+    rowValid[pixelY] = base >= -1 && base < meta.height ? 1 : 0;
+    rowT[pixelY] = exact - base;
+    row0[pixelY] = Math.min(meta.height - 1, Math.max(0, base));
+    row1[pixelY] = Math.min(meta.height - 1, Math.max(0, base + 1));
   }
 
   for (let pixelY = 0; pixelY < TILE_SIZE; pixelY++) {
-    const row = gridRows[pixelY];
-    const rowOffset = row * meta.width;
+    // Outside the atlas (beyond 85N / 60S). Fully transparent, so the base map
+    // shows through cleanly rather than being covered by a block that would
+    // imply we have data saying "nothing here". PNG buffers start zeroed, so
+    // alpha is already 0.
+    if (!rowValid[pixelY]) continue;
+
+    const rowA = row0[pixelY] * meta.width;
+    const rowB = row1[pixelY] * meta.width;
+    const ty = rowT[pixelY];
 
     for (let pixelX = 0; pixelX < TILE_SIZE; pixelX++) {
-      const col = gridCols[pixelX];
-      const offset = (pixelY * TILE_SIZE + pixelX) << 2;
+      const tx = colT[pixelX];
+      const cA = col0[pixelX];
+      const cB = col1[pixelX];
 
-      // Outside the atlas (beyond 85N / 60S, or an out-of-range column).
-      // Fully transparent, so the base map shows through cleanly rather than
-      // being covered by a block that would imply we have data saying
-      // "nothing here". PNG buffers start zeroed, so alpha is already 0.
-      if (row < 0 || col < 0) continue;
+      // Four surrounding cells, weighted by distance.
+      const samples = [
+        [grid[rowA + cA], (1 - tx) * (1 - ty)],
+        [grid[rowA + cB], tx * (1 - ty)],
+        [grid[rowB + cA], (1 - tx) * ty],
+        [grid[rowB + cB], tx * ty],
+      ];
 
-      const raw = grid[rowOffset + col];
-      if (raw === meta.noData) continue;
+      // Gaps are dropped and the remaining weights renormalised, rather than
+      // being blended in as zero — which would drag a coastline toward "no
+      // data" and paint a dark fringe along every shore.
+      let total = 0;
+      let weight = 0;
+      for (let i = 0; i < 4; i++) {
+        const value = samples[i][0];
+        if (value === meta.noData) continue;
+        total += value * samples[i][1];
+        weight += samples[i][1];
+      }
+      if (weight === 0) continue;
 
+      const sqm = total / weight / meta.scale;
       const lutOffset =
-        (Math.min(COLOUR_LUT_MAX, Math.max(COLOUR_LUT_MIN, Math.round((raw / meta.scale) * 100))) -
+        (Math.min(COLOUR_LUT_MAX, Math.max(COLOUR_LUT_MIN, Math.round(sqm * 100))) -
           COLOUR_LUT_MIN) * 3;
 
+      const offset = (pixelY * TILE_SIZE + pixelX) << 2;
       data[offset] = colourLut[lutOffset];
       data[offset + 1] = colourLut[lutOffset + 1];
       data[offset + 2] = colourLut[lutOffset + 2];
