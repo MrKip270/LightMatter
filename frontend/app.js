@@ -228,22 +228,58 @@ function wire(state) {
   const list = ui.querySelector("#suggestions");
   const wrap = ui.querySelector(".searchwrap");
 
+  let focusedIdx = -1;
+
+  function setFocused(idx) {
+    const items = list.querySelectorAll("li");
+    if (focusedIdx >= 0 && items[focusedIdx]) {
+      items[focusedIdx].setAttribute("aria-selected", "false");
+    }
+    focusedIdx = idx;
+    if (focusedIdx >= 0 && items[focusedIdx]) {
+      items[focusedIdx].setAttribute("aria-selected", "true");
+      input.setAttribute("aria-activedescendant", items[focusedIdx].id);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
   new MutationObserver(() => {
     input.setAttribute("aria-expanded", String(!list.hidden));
+    if (list.hidden) setFocused(-1);
   }).observe(list, { attributes: true, attributeFilter: ["hidden"] });
 
   let timer;
   input.addEventListener("input", () => {
     searchText = input.value;
+    setFocused(-1);
     clearTimeout(timer);
     timer = setTimeout(() => suggest(input.value, list), 250);
   });
 
   input.addEventListener("keydown", (event) => {
+    const items = list.querySelectorAll("li");
+    if (!list.hidden && items.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setFocused(Math.min(focusedIdx + 1, items.length - 1));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setFocused(Math.max(focusedIdx - 1, -1));
+        return;
+      }
+    }
     if (event.key === "Enter") {
       event.preventDefault();
+      const active = focusedIdx >= 0 ? items[focusedIdx] : null;
       list.hidden = true;
-      search(input.value);
+      if (active) {
+        select(Number(active.dataset.lat), Number(active.dataset.lon), active.dataset.label);
+      } else {
+        search(input.value);
+      }
     }
     if (event.key === "Escape") {
       list.hidden = true;
@@ -375,9 +411,10 @@ async function suggest(text, list) {
       return;
     }
     list.innerHTML = data.results
-      .map((place) => {
+      .map((place, i) => {
         const label = [place.name, place.region, place.country].filter(Boolean).join(", ");
-        return `<li role="option" data-lat="${place.lat}" data-lon="${place.lon}"
+        return `<li id="suggestion-${i}" role="option" aria-selected="false"
+                    data-lat="${place.lat}" data-lon="${place.lon}"
                     data-label="${esc(label)}">${esc(label)}</li>`;
       })
       .join("");

@@ -60,6 +60,8 @@
 
   --blur: saturate(130%) blur(14px);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --shadow-drop: rgba(0, 0, 0, 0.65);
+  --shadow-float: rgba(0, 0, 0, 0.5);
 }
 
 /* ============================================================================
@@ -99,6 +101,11 @@ html, body {
 }
 .leaflet-control-attribution a { color: var(--text-dim) !important; }
 .leaflet-control-zoom a {
+  width: 40px !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: var(--panel) !important;
   color: var(--text) !important;
   border-color: var(--edge-lit) !important;
@@ -462,7 +469,7 @@ button { cursor: pointer; }
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   backdrop-filter: var(--blur);
   border: 1px solid var(--edge-lit);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 14px 44px var(--shadow-drop);
   transition: border-color 200ms var(--ease);
 }
 .search:focus-within { border-color: var(--brick); }
@@ -473,7 +480,7 @@ button { cursor: pointer; }
   font-size: 15px;
   min-width: 0;
 }
-.search input:focus { outline: none; }
+.search input:focus-visible { outline: none; }
 .search input::placeholder { color: var(--text-faint); }
 .search .glyph { color: var(--rose); }
 
@@ -551,7 +558,7 @@ button { cursor: pointer; }
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-dim);
-  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -10px 34px var(--shadow-float);
 }
 .toast[hidden] { display: none; }
 
@@ -569,7 +576,7 @@ button { cursor: pointer; }
   max-height: 15rem;
   overflow-y: auto;
   border-color: var(--edge-lit);
-  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 -10px 34px var(--shadow-drop);
 }
 .suggestions[hidden] { display: none; }
 .suggestions li {
@@ -578,7 +585,8 @@ button { cursor: pointer; }
   font-size: 14px;
   cursor: pointer;
 }
-.suggestions li:hover { background: var(--oxblood); color: var(--rose); }
+.suggestions li:hover,
+.suggestions li[aria-selected="true"] { background: var(--oxblood); color: var(--rose); }
 
 /* ============================================================================
    ENTRY OVERLAY
@@ -647,7 +655,7 @@ button { cursor: pointer; }
   border: 1px solid var(--edge-lit);
   backdrop-filter: blur(8px);
   color: var(--text-dim);
-  font: 400 12px/1 var(--mono);
+  font: 400 12px/1 var(--data);
   letter-spacing: 0.02em;
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
