@@ -636,6 +636,30 @@ button { cursor: pointer; }
    The concept's percentages collapse on a phone: 5% of 380px is a 19px target,
    under half the 44px minimum, and a 35% panel is ~130px wide.
    ========================================================================= */
+/* Appears above the search bar when no location is loaded yet. Fades in after
+   a short delay so it doesn't compete with the entry overlay transition. */
+.map-hint {
+  position: fixed;
+  bottom: calc(15% + 60px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--edge-lit);
+  backdrop-filter: blur(8px);
+  color: var(--text-dim);
+  font: 400 12px/1 var(--mono);
+  letter-spacing: 0.02em;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  animation: hint-in 0.5s ease 1.0s forwards;
+}
+@keyframes hint-in {
+  to { opacity: 1; }
+}
+
 @media (max-width: 46rem) {
   .info { width: 100%; min-width: 0; max-width: none; }
   .searchwrap { width: 90%; bottom: 9%; }
@@ -643,6 +667,7 @@ button { cursor: pointer; }
   .logo-word { display: none; }
   .entry-card { width: 92%; min-width: 0; }
   .suggestions li { padding: 0.75rem 0.8rem; }
+  .map-hint { bottom: calc(9% + 60px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

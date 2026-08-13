@@ -102,6 +102,8 @@ function render(state = {}) {
       </p>
     </div>
 
+    ${!report && !state.loading ? `<p class="map-hint" aria-hidden="true">Search a city or click the map</p>` : ""}
+
     <div class="searchwrap">
       <ul class="suggestions panel" id="suggestions" hidden role="listbox"></ul>
       <p class="toast panel" id="toast" hidden></p>
