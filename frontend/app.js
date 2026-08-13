@@ -76,6 +76,11 @@ function render(state = {}) {
     </aside>
 
     <div class="rail panel ${railOpen ? "open" : ""}">
+      <button class="rail-tab" type="button"
+              aria-label="${railOpen ? "Close" : "Open"} layers"
+              aria-expanded="${railOpen}">
+        <span class="rail-tab-text">Layers</span>
+      </button>
       <p class="rail-title">Layers</p>
       <label class="layer">
         <input type="checkbox" id="lp-toggle" ${lightOn ? "checked" : ""} />
@@ -144,7 +149,13 @@ function infoBody(state) {
   if (state.loading) {
     return `<p class="eyebrow">Reading the sky</p>
             <h2 class="display info-title">${esc(state.label || "")}</h2>
-            <p class="lede">Checking cloud cover, moonlight and light pollution…</p>`;
+            <div class="scoreline">
+              <div class="scorebox"><div class="skeleton sk-score"></div><div class="skeleton sk-label"></div></div>
+              <div class="scorebox"><div class="skeleton sk-score"></div><div class="skeleton sk-label"></div></div>
+            </div>
+            <div class="skeleton sk-line" style="width:80%;margin-top:1.1rem"></div>
+            <div class="skeleton sk-line" style="width:55%;margin-top:0.4rem"></div>
+            <div class="skeleton sk-line" style="width:38%;margin-top:1.2rem"></div>`;
   }
   if (!report) return "";
 
@@ -249,6 +260,8 @@ function wire(state) {
     if (event.target.tagName === "INPUT" || event.target.tagName === "LABEL") return;
     railOpen = !railOpen;
     rail.classList.toggle("open", railOpen);
+    const tab = rail.querySelector(".rail-tab");
+    if (tab) tab.setAttribute("aria-expanded", railOpen);
   });
 
   ui.querySelector("#lp-toggle").addEventListener("change", (event) => {

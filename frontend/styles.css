@@ -307,17 +307,41 @@ button { cursor: pointer; }
 }
 .rail:hover, .rail:focus-within, .rail.open { transform: translateY(-50%); }
 
-/* The grab handle — the only part visible when closed. */
-.rail::before {
-  content: "";
+/* The tab button — the only part visible when closed. Replaces the
+   invisible ::before grab line with a focusable button so touch users
+   can discover and open the rail without relying on hover. */
+.rail-tab {
   position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 44px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  color: var(--orchid);
+}
+.rail-tab::before {
+  content: "";
   width: 3px;
   height: 48px;
   border-radius: 2px;
   background: linear-gradient(var(--brick), var(--plum));
+  flex-shrink: 0;
+}
+.rail-tab-text {
+  font-family: var(--data);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
 
 .rail-title {
@@ -483,6 +507,23 @@ button { cursor: pointer; }
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--ember) 12%, transparent) 25%,
+    color-mix(in srgb, var(--ember) 22%, transparent) 50%,
+    color-mix(in srgb, var(--ember) 12%, transparent) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+.sk-score { height: 44px; width: 54px; }
+.sk-label { height: 10px; width: 44px; margin-top: 0.4rem; }
+.sk-line  { height: 14px; }
 
 /* Sits above the bar, out of flow — same reasoning as the suggestions list.
    A message must never be able to push the search bar around. */
