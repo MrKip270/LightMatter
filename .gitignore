@@ -26,3 +26,7 @@ data/raw/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# --- Impeccable design tooling ---
+# The hook cache is a per-session runtime artifact; critique snapshots are kept.
+.impeccable/hook.cache.json
