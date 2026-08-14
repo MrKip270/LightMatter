@@ -66,12 +66,14 @@ function render(state = {}) {
 
     <div class="logo">
       <img src="assets/logo.png" alt="LightMatter" class="logo-img"
+           width="1254" height="1254"
            onerror="this.style.display='none';this.nextElementSibling.style.display='inline'" />
       <span class="logo-fallback" aria-hidden="true">◐</span>
       <span class="logo-word">LightMatter</span>
     </div>
 
     <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite" aria-label="Location summary">
+      <button class="info-close" type="button" aria-label="Close location summary">×</button>
       ${infoBody(state)}
     </aside>
 
@@ -147,7 +149,7 @@ function legendMarkup() {
 
 function infoBody(state) {
   if (state.error) {
-    return `<p class="eyebrow">Couldn't read the sky</p>
+    return `<p class="eyebrow">Couldn’t read the sky</p>
             <p class="lede">${esc(state.error)}</p>`;
   }
   if (state.loading) {
@@ -330,6 +332,12 @@ function wire(state) {
     recentre();
   });
 
+  ui.querySelector(".info-close").addEventListener("click", () => {
+    infoOpen = false;
+    render({});
+    recentre();
+  });
+
   ui.querySelector("#locate").addEventListener("click", useMyLocation);
 
   const nudge = ui.querySelector(".nudge-cta");
@@ -360,7 +368,7 @@ function useMyLocation() {
   const button = ui.querySelector("#locate");
 
   if (!navigator.geolocation) {
-    toast("This browser can't share a location.");
+    toast("This browser can’t share a location.");
     return;
   }
 
@@ -392,7 +400,7 @@ function useMyLocation() {
           ? "Location permission was denied. Search for a place instead."
           : err.code === err.TIMEOUT
             ? "Timed out finding your location. Try again, or search for a place."
-            : "Couldn't determine your location. Search for a place instead.";
+            : "Couldn’t determine your location. Search for a place instead.";
       toast(reason, 6000);
     },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
@@ -625,5 +633,5 @@ try {
   loadLegend();
 } catch (err) {
   console.error(err);
-  notice("The map couldn't load, but search still works.", 0);
+  notice("The map couldn’t load, but search still works.", 0);
 }
