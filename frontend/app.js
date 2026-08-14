@@ -189,9 +189,12 @@ function infoBody(state) {
 
     ${
       d.bestWindow
-        ? `<p class="window mono">BEST WINDOW · ${formatHour(d.bestWindow.start)}–${formatHour(d.bestWindow.end)}
-             <span class="dim">${d.bestWindow.hours} hr${d.bestWindow.moonFree ? "" : ", moonlit"}</span></p>`
-        : `<p class="window mono dim">NO USABLE WINDOW TONIGHT</p>`
+        ? `<div class="window-card">
+             <div class="k">Best window tonight</div>
+             <div class="window-time">${formatHour(d.bestWindow.start)} – ${formatHour(d.bestWindow.end)}</div>
+             <div class="k">${d.bestWindow.hours} hr${d.bestWindow.moonFree ? "" : " · moonlit"}</div>
+           </div>`
+        : `<p class="window mono dim">No usable window tonight</p>`
     }
 
     <ul class="targets">
@@ -307,12 +310,23 @@ function wire(state) {
   // Hover opens the rail on a pointer device; tap opens it on touch. Without
   // the tap fallback the layer controls are unreachable on a phone.
   const rail = ui.querySelector(".rail");
-  rail.addEventListener("click", (event) => {
-    if (event.target.tagName === "INPUT" || event.target.tagName === "LABEL") return;
-    railOpen = !railOpen;
+  const railTab = rail.querySelector(".rail-tab");
+
+  function setRailOpen(open) {
+    railOpen = open;
     rail.classList.toggle("open", railOpen);
-    const tab = rail.querySelector(".rail-tab");
-    if (tab) tab.setAttribute("aria-expanded", railOpen);
+    railTab.setAttribute("aria-expanded", railOpen);
+  }
+
+  // The tab button is the one accessible, keyboard-operable control — it owns
+  // open AND close. The div-wide listener below is a mouse-only convenience
+  // (click blank space to dismiss) layered on top, never the only way in.
+  railTab.addEventListener("click", () => setRailOpen(!railOpen));
+
+  rail.addEventListener("click", (event) => {
+    if (!railOpen) return;
+    if (event.target.closest(".rail-tab, input, label")) return;
+    setRailOpen(false);
   });
 
   ui.querySelector("#lp-toggle").addEventListener("change", (event) => {
@@ -329,13 +343,15 @@ function wire(state) {
   ui.querySelector(".menu").addEventListener("click", () => {
     infoOpen = !infoOpen;
     render({});
-    recentre();
+    // Wait a frame so the panel has begun opening and its width is measurable —
+    // same reasoning as the flyTo call in select().
+    requestAnimationFrame(recentre);
   });
 
   ui.querySelector(".info-close").addEventListener("click", () => {
     infoOpen = false;
     render({});
-    recentre();
+    requestAnimationFrame(recentre);
   });
 
   ui.querySelector("#locate").addEventListener("click", useMyLocation);
@@ -490,6 +506,7 @@ async function select(lat, lon, label) {
   report = null;
   lastPoint = { lat, lon };
   searchText = label;
+  syncUrl(lat, lon);
 
   render({ loading: true, label });
 
@@ -584,6 +601,31 @@ async function loadLegend() {
   }
 }
 
+// --- URL state ----------------------------------------------------------------
+//
+// The selected location is reflected in the URL so a report can be shared,
+// bookmarked, or survive a reload. replaceState, never pushState — one
+// history entry per page load, not one per location searched.
+
+function syncUrl(lat, lon) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("lat", lat);
+  url.searchParams.set("lon", lon);
+  history.replaceState(null, "", url);
+}
+
+function restoreFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  // Number(null) is 0, which would otherwise pass the checks below and
+  // silently select Null Island on every bare visit to "/".
+  if (!params.has("lat") || !params.has("lon")) return;
+  const lat = Number(params.get("lat"));
+  const lon = Number(params.get("lon"));
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return;
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return;
+  select(lat, lon, `(${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+}
+
 // --- intro ------------------------------------------------------------------
 
 function hideEntry() {
@@ -635,3 +677,7 @@ try {
   console.error(err);
   notice("The map couldn’t load, but search still works.", 0);
 }
+
+// Restore a shared/bookmarked location. Runs even if the map failed to load —
+// select() itself already tolerates a missing map.
+restoreFromUrl();
