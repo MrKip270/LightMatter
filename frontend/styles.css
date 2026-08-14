@@ -51,7 +51,7 @@
   --text-dim: #d98da5;
   --text-faint: #9d6a7e;
 
-  --display: "Instrument Serif", Georgia, serif;
+  --display: "Newsreader", Georgia, serif;
   --body: "IBM Plex Sans", system-ui, sans-serif;
   /* Monospace for SQM, coordinates, magnitudes, times. Tabular values that
      should align in a column — the typeface encodes something true about the
