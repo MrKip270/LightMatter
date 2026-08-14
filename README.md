@@ -15,17 +15,18 @@ optional.
 Early development, built step by step as a learning project. Working today:
 
 - **Map-first interface.** The map *is* the page. Search by city name (with an
-  autocomplete dropdown of real, resolvable places), enter raw `(lat, lon)`
-  coordinates, tap the pin to use your device location, or click anywhere on the
-  map. A **light pollution overlay** rendered from our own grid sits over it,
-  with an opacity slider and a colour key, and the location summary slides in
-  from the left.
+  accessible autocomplete dropdown), enter raw `(lat, lon)` coordinates, tap the
+  pin to use your device location, or click anywhere on the map. A **light
+  pollution overlay** rendered from our own grid sits over it, with an opacity
+  slider and a colour key. The location summary slides in from the left and
+  includes a close button; the **best window** tonight is featured as a card
+  with its start/end times.
 - **Aurora** — live aurora probability for any location, from NOAA SWPC.
 - **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
-  the hours between local sunset and sunrise and reduced to a plain-language
-  verdict (Clear / Partly cloudy / Overcast). Reports both the night's average
-  and the longest unbroken clear stretch, so a night that's clear early and
-  clouded over later isn't averaged into a misleading answer.
+  the hours of **astronomical darkness** (sun ≥18° below the horizon), with
+  graceful fallback to sunset/sunrise at high latitudes. Reduced to a
+  plain-language verdict (Clear / Partly cloudy / Overcast). Reports both the
+  night's average and the longest unbroken clear stretch.
 - **Light pollution** — sky darkness for any coordinate, from a preprocessed
   copy of the Falchi et al. 2016 World Atlas. Reports SQM (magnitudes per square
   arc-second), a plain-language description, and the faintest star magnitude
@@ -242,15 +243,19 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. **A real test suite** — the highest-value item. Everything so far has been
-   verified with throwaway scripts, which caught three genuine bugs; without a
-   suite the next refactor silently reintroduces them.
-2. **Twilight handling** — the night window runs sunset→sunrise, but true dark
-   starts up to 90 minutes after sunset, so early evening currently looks better
-   than it is.
-3. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
+1. ~~**A real test suite**~~ — done. 133 tests, no network, ~1.6s.
+2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
+   (sun 18° below horizon) rather than sunset/sunrise.
+3. **Nearest dark site** — walk the light pollution grid outward from the
+   requested point to find the closest location above a target SQM. Grid is
+   already in memory; this is a search algorithm plus UI.
+4. **Aurora overlay** — render the NOAA probability grid as a map layer, the
+   same way light pollution is rendered.
+5. **Hourly timeline chart** — `/api/sky` already returns per-hour cloud cover,
+   moon altitude, and effective SQM in its `timeline` field; nothing renders it
+   yet.
+6. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
    would turn the static "bright planets" row into "Jupiter, southeast, 40° up".
-4. **Caching** — every search hits Open-Meteo twice and NOAA once.
-5. **The styling pass**, once the content has stopped moving.
+7. **Caching** — every search hits Open-Meteo twice and NOAA once.
 
 Styling stays deliberately minimal until the remaining data sources land.

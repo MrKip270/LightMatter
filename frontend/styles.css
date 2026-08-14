@@ -248,13 +248,27 @@ button { cursor: pointer; }
   border-radius: 12px;
 }
 .scorebox .n { font-family: var(--display); font-size: 42px; line-height: 1; }
-.scorebox .k {
+.scorebox .k,
+.window-card .k {
   font-family: var(--data);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
   margin-top: 0.15rem;
+}
+
+.window-card {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  margin-top: 1rem;
+}
+.window-time {
+  font-family: var(--display);
+  font-size: 26px;
+  line-height: 1.1;
+  margin: 0.15rem 0 0;
 }
 
 /* Five steps: white → pink → orange → crimson → blood. */
