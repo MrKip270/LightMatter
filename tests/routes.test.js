@@ -166,10 +166,13 @@ test("clouds route returns a normalized payload from the canned forecast", async
 
     assert.equal(status, 200);
     assert.equal(body.dataAvailable, true);
-    assert.equal(body.verdict, "Clear", "the canned night is clear 20:00-05:00");
-    assert.equal(body.night.hoursCounted, 10, "sunset 20:10 -> sunrise 05:44");
+    assert.equal(body.verdict, "Clear", "the canned night is clear during astronomical dark");
+    // Astronomical dark in Chicago on 2026-07-31: 22:03 local → 03:50 local.
+    // floorToHour gives window 22:00-03:00 = 6 hours. The old assertion was 10
+    // (sunset 20:10 → sunrise 05:44) — twilight handling shrinks it correctly.
+    assert.equal(body.night.hoursCounted, 6, "astronomical dark 22:03-03:50 local");
     assert.ok(body.bestClearRun, "a usable window was found");
-    assert.equal(body.bestClearRun.hours, 10);
+    assert.equal(body.bestClearRun.hours, 6);
 
     // Open-Meteo snaps to its model grid; we report what it actually used.
     assert.equal(body.location.used.lat, 41.879498);

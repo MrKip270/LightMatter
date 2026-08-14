@@ -2,6 +2,8 @@
 //
 // Pure data logic. See sources/aurora.js for why this is split from the route.
 
+const suncalc = require("suncalc");
+
 const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
 
 // --- Tuning knobs -----------------------------------------------------------
@@ -39,6 +41,14 @@ function visibilityNote(verdict) {
 // we want is 20:00 (it covers 20:00-21:00, which contains 20:10).
 function floorToHour(localIso) {
   return `${localIso.slice(0, 13)}:00`;
+}
+
+// Convert a UTC Date (from suncalc) to a naive local ISO string (the format
+// Open-Meteo uses for its hourly time array). The inverse of localIsoToUtc in
+// sky.js. We add the offset rather than subtract because we are going UTC→local.
+function utcToLocalIso(utcDate, utcOffsetSeconds) {
+  const localMs = utcDate.getTime() + utcOffsetSeconds * 1000;
+  return new Date(localMs).toISOString().slice(0, 16);
 }
 
 // Pick the hourly entries inside [startIso, endIso], inclusive.
@@ -120,18 +130,68 @@ async function getClouds(lat, lon) {
 
   const sunsetToday = data.daily?.sunset?.[0] ?? null;
   const sunriseTomorrow = data.daily?.sunrise?.[1] ?? null;
+  const utcOffset = data.utc_offset_seconds;
 
   // Polar edge case. Above the Arctic circle and below the Antarctic one, the
   // sun may not set or not rise, and Open-Meteo reports null. Tromsø - our own
   // aurora default at 69.6N - is inside that zone, so this is a real path.
-  const isPolarEdgeCase = !sunsetToday || !sunriseTomorrow;
+  const isTruePolar = !sunsetToday || !sunriseTomorrow;
 
-  const windowStart = isPolarEdgeCase
+  // Compute astronomical twilight bounds. The sun must be 18° below the horizon
+  // before sky is genuinely dark — this can be 60–90 min after sunset depending
+  // on latitude and season. suncalc calls the start of that window "night" and
+  // the end "nightEnd". Both are returned as UTC Dates.
+  //
+  // We use two separate getTimes() calls because the events fall on different
+  // calendar days: "night" on the sunset day, "nightEnd" on the sunrise day.
+  // Using the wrong day would return last night's or next night's value.
+  //
+  // suncalc returns an invalid Date (NaN) rather than null when the sun never
+  // reaches 18° below the horizon (e.g. Tromsø in early summer). We check
+  // isFinite so those near-polar cases fall through to the sunset/sunrise window.
+  let twilightStart = null;
+  let twilightEnd = null;
+
+  if (!isTruePolar) {
+    // suncalc uses the UTC calendar date of the Date you pass — the time within
+    // the day doesn't matter. We need it on the LOCAL calendar date of the event,
+    // so we use UTC noon on the date portion of each local string. This avoids
+    // the off-by-one-day problem that arises when the UTC equivalent of a local
+    // evening crosses midnight into the next UTC day (e.g. Chicago UTC-5:
+    // local 20:10 = UTC 01:10 next day, so passing that UTC date to suncalc
+    // would compute events for the wrong night entirely).
+    const eveningTimes = suncalc.getTimes(
+      new Date(`${sunsetToday.slice(0, 10)}T12:00:00Z`), lat, lon
+    );
+    const morningTimes = suncalc.getTimes(
+      new Date(`${sunriseTomorrow.slice(0, 10)}T12:00:00Z`), lat, lon
+    );
+
+    if (eveningTimes.night && isFinite(eveningTimes.night.getTime())) {
+      twilightStart = utcToLocalIso(eveningTimes.night, utcOffset);
+    }
+    if (morningTimes.nightEnd && isFinite(morningTimes.nightEnd.getTime())) {
+      twilightEnd = utcToLocalIso(morningTimes.nightEnd, utcOffset);
+    }
+  }
+
+  // Window priority:
+  //   1. Astronomical twilight (sun 18° below horizon) — most accurate.
+  //   2. Sunset/sunrise — fallback for near-polar summers where the sun never
+  //      dips far enough for true astronomical night.
+  //   3. First/last hourly entry — last resort for true polar (no sunset at all).
+  const windowStart = isTruePolar
     ? data.hourly.time[0]
-    : floorToHour(sunsetToday);
-  const windowEnd = isPolarEdgeCase
+    : twilightStart
+      ? floorToHour(twilightStart)
+      : floorToHour(sunsetToday);
+  const windowEnd = isTruePolar
     ? data.hourly.time[23]
-    : floorToHour(sunriseTomorrow);
+    : twilightEnd
+      ? floorToHour(twilightEnd)
+      : floorToHour(sunriseTomorrow);
+
+  const isPolarEdgeCase = isTruePolar || (!twilightStart && !twilightEnd);
 
   const nightHours = selectHoursInWindow(
     data.hourly.time,
@@ -188,6 +248,8 @@ async function getClouds(lat, lon) {
       end: windowEnd,
       sunset: sunsetToday,
       sunrise: sunriseTomorrow,
+      astronomicalDusk: twilightStart,
+      astronomicalDawn: twilightEnd,
       hoursCounted: nightHours.length,
       polarEdgeCase: isPolarEdgeCase,
     },
@@ -210,6 +272,7 @@ module.exports = {
     cloudVerdict,
     visibilityNote,
     floorToHour,
+    utcToLocalIso,
     selectHoursInWindow,
     longestClearRun,
     averageCloudCover,
