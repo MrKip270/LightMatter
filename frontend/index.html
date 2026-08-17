@@ -34,15 +34,54 @@
   <!-- First-visit explainer. Dismissal is remembered, so it never nags. -->
   <div id="entry" class="entry" hidden>
     <div class="entry-card" role="dialog" aria-modal="true" aria-labelledby="entry-title" tabindex="-1">
-      <p class="eyebrow">Before you start</p>
-      <h1 class="display" id="entry-title">
-        Find out what’s <em>actually</em><br />visible tonight.
-      </h1>
+      <div class="entry-head">
+        <div>
+          <p class="eyebrow">Before you start</p>
+          <h1 class="display" id="entry-title">
+            Find out what’s <em>actually</em><br />visible tonight.
+          </h1>
+        </div>
+        <svg class="entry-logo" viewBox="0 0 100 100" fill="none" aria-hidden="true" focusable="false">
+          <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" />
+          <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(60 50 50)" />
+          <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(120 50 50)" />
+          <g transform="translate(50 50) scale(1.41667) translate(-12 -12)" fill="var(--crimson)">
+            <path d="M12,24C5.4,24,0,18.6,0,12S5.4,0,12,0s12,5.4,12,12S18.6,24,12,24z M2.2,10C2.1,10.6,2,11.3,2,12c0,5.5,4.5,10,10,10 c0.2,0,0.3,0,0.5,0c-0.3-0.5-0.5-1.2-0.5-2.1c0-0.7-0.3-0.9-1-1.3C9.7,18,8.4,17,9.4,14.2c0-0.1-0.4-0.2-0.6-0.3 c-1.1-0.3-1.4-1.2-1.5-1.8c-0.1-0.4-0.2-0.9-0.6-1.2C6,10.2,3.7,9.9,2.2,10z M9.3,12c0.3,0.1,1.3,0.4,1.8,1.3 c0.3,0.5,0.3,1,0.1,1.6c-0.5,1.4-0.3,1.5,0.6,1.9c0.8,0.4,2.2,1.1,2.2,3.1c0,0.5,0.1,1,0.4,1.3c0.2,0.2,0.3,0.3,0.5,0.3 c0.4,0,0.4-0.5,0.4-0.7c0-1.6,0.8-2.8,1.4-3.8c0.4-0.7,0.8-1.3,0.8-1.8c0-0.7-0.4-1-1.4-1.4c-0.3-0.1-0.6-0.3-0.9-0.4 c-0.3-0.2-0.6-0.4-0.9-0.6c-0.6-0.5-1-0.8-2.3-0.8h-0.4l-0.3-0.3c-0.6-0.5-2.3-2-1.2-4.2c0.3-0.6,0.8-1,1.2-1.3 c0.7-0.5,1.1-0.8,1.1-2.1c0-1.1-1-2.1-1.5-2.1C7.3,2.4,4.2,4.7,2.8,7.9c1.5,0,4.1,0.2,5.3,1.6c0.7,0.7,0.9,1.5,1,2.1 C9.2,11.8,9.3,11.9,9.3,12z M12.4,10c1.6,0.1,2.4,0.6,3.1,1.1c0.2,0.2,0.4,0.3,0.7,0.4c0.2,0.1,0.4,0.2,0.7,0.3 c1,0.5,2.6,1.2,2.6,3.3c0,1.2-0.6,2.1-1.1,2.9c-0.5,0.8-1,1.5-1,2.4c2.7-1.7,4.6-4.8,4.6-8.4c0-4.9-3.5-8.9-8.1-9.8 c0.3,0.6,0.5,1.3,0.5,2c0,2.3-1.2,3.2-2,3.7c-0.3,0.2-0.5,0.4-0.6,0.5C11.7,8.8,11.6,9.2,12.4,10z" />
+          </g>
+          <g stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round">
+            <g transform="translate(50 90)">
+              <line x1="-6" y1="0" x2="6" y2="0" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+            </g>
+            <g transform="rotate(60 50 50) translate(50 10)">
+              <line x1="-6" y1="0" x2="6" y2="0" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+            </g>
+            <g transform="rotate(120 50 50) translate(50 90)">
+              <line x1="-6" y1="0" x2="6" y2="0" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+              <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+            </g>
+          </g>
+        </svg>
+      </div>
       <p class="lede">
         Enter a place, use your location, or click the map. LightMatter combines
         cloud cover, light pollution, moonlight and aurora activity into a single
         answer — and tells you the best window to go outside.
       </p>
+      <ul class="entry-tips">
+        <li><strong>Two scores.</strong> Tonight is what conditions allow right now;
+          At its best is what the place offers on a clear, moonless night — so a
+          cloudy night somewhere great still reads as worth a return trip.</li>
+        <li><strong>Layers</strong> — the tab on the map's edge — toggles the
+          light-pollution and aurora overlays and their opacity sliders.</li>
+        <li><strong>Find a darker sky</strong> shows up under your result and
+          suggests a nearby spot that's clear tonight, or the darkest one nearby
+          regardless of forecast.</li>
+      </ul>
       <button class="primary" id="entry-proceed">Open the map</button>
     </div>
   </div>

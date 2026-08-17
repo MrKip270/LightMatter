@@ -840,16 +840,43 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 }
 .entry[hidden] { display: none; }
 .entry-card {
-  width: min(40%, 560px);
+  width: min(48%, 640px);
   min-width: 320px;
   padding: 2rem 2.1rem;
   border-radius: 20px;
   background: var(--panel);
   border: 1px solid var(--edge-lit);
 }
+.entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+.entry-logo {
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+}
 .entry-card .display { font-size: 34px; margin-bottom: 0.9rem; }
 .entry-card .display em { font-style: italic; color: var(--rose); }
 .entry-card .lede { margin: 0 0 1.4rem; }
+.entry-tips {
+  list-style: none;
+  margin: 0 0 1.6rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.entry-tips li {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--edge-lit);
+}
+.entry-tips strong { color: var(--text); font-weight: 600; }
 
 .primary {
   background: var(--brick);
@@ -912,6 +939,7 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   .rail { transform: translateY(-50%) translateX(calc(100% - 52px)); }
   .logo-word { display: none; }
   .entry-card { width: 92%; min-width: 0; }
+  .entry-logo { width: 64px; height: 64px; }
   .suggestions li { padding: 0.75rem 0.8rem; }
   .map-hint { bottom: calc(9% + 60px + env(safe-area-inset-bottom, 0px)); }
 }
