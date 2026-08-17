@@ -73,22 +73,22 @@ function render(state = {}) {
         <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(60 50 50)" />
         <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(120 50 50)" />
         <circle cx="50" cy="50" r="17" fill="var(--panel)" stroke="var(--text)" stroke-width="4" />
-        <g clip-path="url(#logoGlobeClip)" stroke="var(--rose)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M44 39 C40 42 39 48 42 52 C44 55 43 60 46 62 C48 63 50 61 49 58 C48 55 51 53 50 49 C49 45 46 41 44 39 Z" />
-          <path d="M58 38 C62 40 63 45 60 48 C63 50 64 55 61 58 C59 60 56 58 57 55 C55 52 56 47 58 44 C56 42 56 40 58 38 Z" />
+        <g clip-path="url(#logoGlobeClip)" stroke="var(--rose)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M44 36 C50 34 58 36 60 41 C61 44 58 47 55 49 C53 51 50 51 49 48 C46 45 42 44 42 40 C42 38 42 37 44 36 Z" />
+          <path d="M52 51 C55 51 57 54 56 58 C56 61 54 64 52 66 C51 64 50 61 50 58 C50 55 50 52 52 51 Z" />
         </g>
         <g stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round">
-          <g transform="translate(20 20)">
+          <g transform="translate(50 90)">
             <line x1="-6" y1="0" x2="6" y2="0" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
           </g>
-          <g transform="translate(92 47)">
+          <g transform="rotate(60 50 50) translate(50 10)">
             <line x1="-6" y1="0" x2="6" y2="0" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
           </g>
-          <g transform="translate(36 90)">
+          <g transform="rotate(120 50 50) translate(50 90)">
             <line x1="-6" y1="0" x2="6" y2="0" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
             <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
