@@ -38,6 +38,15 @@
   --rose: #cf7994;
   --oxblood: #3f1021;
 
+  /* Text-only variants of --crimson/--blood. Both fail contrast as foreground
+     text on --panel (~2.5:1 and ~1.5:1 — checked with WCAG's relative-luminance
+     formula) even though they read fine as fills/backgrounds, which is all
+     they were originally used for. Pulled toward --peak just far enough to
+     clear 4.5:1 (small text) with margin; --crimson/--blood themselves are
+     untouched everywhere else (map fills, .primary:hover, .notice). */
+  --crimson-text: color-mix(in srgb, var(--crimson) 65%, var(--peak) 35%);
+  --blood-text: color-mix(in srgb, var(--blood) 55%, var(--peak) 45%);
+
   /* Score ramp, brightest to darkest. Quality is encoded by BRIGHTNESS along
      one warm run rather than by hue: a red/green scale would clash with this
      palette and fails for roughly 8% of men. The ember is the one colour not
@@ -291,8 +300,8 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 .n[data-band="peak"] { color: var(--peak); }
 .n[data-band="good"] { color: var(--rose); }
 .n[data-band="fair"] { color: var(--ember); }
-.n[data-band="poor"] { color: var(--crimson); }
-.n[data-band="bad"]  { color: var(--blood); }
+.n[data-band="poor"] { color: var(--crimson-text); }
+.n[data-band="bad"]  { color: var(--blood-text); }
 .n[data-band="none"] { color: var(--text-faint); }
 
 .headline { font-size: 15px; line-height: 1.55; color: var(--text-dim); margin: 1.1rem 0 1rem; }
@@ -353,7 +362,7 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 /* Same ramp as the scores, so a colour means one thing everywhere. */
 .v[data-v="Likely"]      { color: var(--peak); }
 .v[data-v="Possible"]    { color: var(--ember); }
-.v[data-v="Not visible"] { color: var(--crimson); }
+.v[data-v="Not visible"] { color: var(--crimson-text); }
 .v[data-v="Unknown"]     { color: var(--text-faint); }
 
 /* Cloud cover and eclipse info live here rather than as map layers — both are
