@@ -65,10 +65,17 @@ function render(state = {}) {
             aria-expanded="${showInfo}">☰</button>
 
     <div class="logo">
-      <img src="assets/logo.png" alt="LightMatter" class="logo-img"
-           width="1254" height="1254"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='inline'" />
-      <span class="logo-fallback" aria-hidden="true">◐</span>
+      <svg class="logo-img" viewBox="0 0 100 100" fill="none" aria-hidden="true" focusable="false">
+        <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" />
+        <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(60 50 50)" />
+        <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(120 50 50)" />
+        <circle cx="50" cy="50" r="17" fill="var(--panel)" stroke="var(--text)" stroke-width="4" />
+        <path d="M40 44 q4 -6 8 -2 q3 3 -2 5 q-5 2 -3 6" stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M56 42 q5 4 2 8 q-3 3 2 6 q4 3 1 7" stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="50" cy="10" r="4" fill="var(--rose)" />
+        <circle cx="50" cy="10" r="4" fill="var(--rose)" transform="rotate(60 50 50)" />
+        <circle cx="50" cy="10" r="4" fill="var(--rose)" transform="rotate(120 50 50)" />
+      </svg>
       <span class="logo-word">LightMatter</span>
     </div>
 

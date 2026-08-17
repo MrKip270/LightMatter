@@ -178,7 +178,6 @@ button { cursor: pointer; }
   color: var(--rose);
 }
 .logo-img { height: 1.24em; width: auto; display: block; }
-.logo-fallback { display: none; color: var(--rose); font-size: 1.05em; }
 .logo-word { letter-spacing: 0.01em; }
 
 /* ============================================================================

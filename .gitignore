@@ -27,6 +27,10 @@ data/raw/
 Thumbs.db
 .vscode/
 
+# --- Claude Code working notes ---
+# Internal working notes for AI-assisted development. Not meant for GitHub.
+CLAUDE.md
+
 # --- Impeccable design tooling ---
 # The hook cache is a per-session runtime artifact; critique snapshots are kept.
 .impeccable/hook.cache.json
