@@ -258,6 +258,14 @@ function infoBody(state) {
       </div>
     </div>
 
+    ${
+      d.score != null && d.potentialScore != null && d.score > d.potentialScore
+        ? `<p class="score-note dim">Tonight is running ahead of this site's baseline — there's live
+             aurora activity in the forecast, which "at its best" deliberately excludes since
+             aurora chance isn't a stable property of a place.</p>`
+        : ""
+    }
+
     ${darkSiteButtonMarkup()}
 
     <p class="headline">${esc(d.headline)}</p>

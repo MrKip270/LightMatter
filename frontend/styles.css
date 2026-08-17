@@ -278,6 +278,10 @@ button { cursor: pointer; }
 
 .headline { font-size: 15px; line-height: 1.55; color: var(--text-dim); margin: 1.1rem 0 1rem; }
 
+/* Explains the one case where "tonight" can read higher than "at its best" —
+   a live aurora bonus that the baseline deliberately excludes. */
+.score-note { font-size: 12px; line-height: 1.45; margin: 0.6rem 0 0; }
+
 .window {
   font-size: 11px;
   letter-spacing: 0.09em;
