@@ -149,6 +149,12 @@ html, body {
 
 button, input { font-family: inherit; color: inherit; }
 button { cursor: pointer; }
+
+/* Every tap target in this app is a button, checkbox, or range input — none
+   need the browser's default double-tap-zoom delay or its gray tap flash,
+   which clashes with the dark/wine palette anyway. */
+button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
 :focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
 
 /* ============================================================================
@@ -160,8 +166,8 @@ button { cursor: pointer; }
    ========================================================================= */
 .logo {
   position: absolute;
-  top: 1.05rem;
-  right: 1.3rem;
+  top: calc(1.05rem + env(safe-area-inset-top, 0px));
+  right: calc(1.3rem + env(safe-area-inset-right, 0px));
   display: flex;
   align-items: center;
   gap: 0.26em;
@@ -183,8 +189,8 @@ button { cursor: pointer; }
    ========================================================================= */
 .menu {
   position: absolute;
-  top: 1rem;
-  left: 1.1rem;
+  top: calc(1rem + env(safe-area-inset-top, 0px));
+  left: calc(1.1rem + env(safe-area-inset-left, 0px));
   width: 44px;   /* 44px is the minimum comfortable touch target */
   height: 44px;
   border-radius: 12px;
@@ -207,8 +213,12 @@ button { cursor: pointer; }
   width: 35%;
   min-width: 340px;
   max-width: 470px;
-  padding: 4.6rem 1.6rem 2rem;
+  padding-top: calc(4.6rem + env(safe-area-inset-top, 0px));
+  padding-right: 1.6rem;
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(1.6rem + env(safe-area-inset-left, 0px));
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-top: none;
   border-bottom: none;
   border-left: none;
@@ -220,8 +230,8 @@ button { cursor: pointer; }
 
 .info-close {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: calc(1rem + env(safe-area-inset-top, 0px));
+  right: calc(1rem + env(safe-area-inset-right, 0px));
   width: 44px;
   height: 44px;
   border-radius: 12px;
@@ -409,7 +419,7 @@ button { cursor: pointer; }
    ========================================================================= */
 .rail {
   position: absolute;
-  right: 0;
+  right: env(safe-area-inset-right, 0px);
   top: 50%;
   width: 15rem;
   transform: translateY(-50%) translateX(calc(100% - 44px));
@@ -548,7 +558,7 @@ button { cursor: pointer; }
 .searchwrap {
   position: absolute;
   left: 50%;
-  bottom: 15%;
+  bottom: calc(15% + env(safe-area-inset-bottom, 0px));
   width: 35%; /* was 50% — narrowed by 30% */
   max-width: 434px;
   min-width: 260px;
@@ -621,18 +631,30 @@ button { cursor: pointer; }
   50% { opacity: 0.5; }
 }
 
+/* A sweeping highlight on a pseudo-element, animated via transform rather
+   than background-position — the original ran an infinite animation on a
+   non-compositor property, forcing a repaint every frame for as long as any
+   loading skeleton was on screen. */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  100% { transform: translateX(200%); }
 }
 .skeleton {
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--ember) 12%, transparent) 25%,
-    color-mix(in srgb, var(--ember) 22%, transparent) 50%,
-    color-mix(in srgb, var(--ember) 12%, transparent) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ember) 14%, transparent);
   border-radius: 6px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--ember) 26%, transparent),
+    transparent);
+  transform: translateX(-200%);
+  animation: shimmer 1.6s ease-in-out infinite;
 }
 .sk-score { height: 44px; width: 54px; }
 .sk-label { height: 10px; width: 44px; margin-top: 0.4rem; }
@@ -668,6 +690,7 @@ button { cursor: pointer; }
   border-radius: 14px;
   max-height: 15rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-color: var(--edge-lit);
 }
 .suggestions[hidden] { display: none; }
@@ -740,7 +763,7 @@ button { cursor: pointer; }
    a short delay so it doesn't compete with the entry overlay transition. */
 .map-hint {
   position: fixed;
-  bottom: calc(15% + 60px);
+  bottom: calc(15% + 60px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
@@ -762,12 +785,12 @@ button { cursor: pointer; }
 
 @media (max-width: 46rem) {
   .info { width: 100%; min-width: 0; max-width: none; }
-  .searchwrap { width: 90%; bottom: 9%; }
+  .searchwrap { width: 90%; bottom: calc(9% + env(safe-area-inset-bottom, 0px)); }
   .rail { transform: translateY(-50%) translateX(calc(100% - 52px)); }
   .logo-word { display: none; }
   .entry-card { width: 92%; min-width: 0; }
   .suggestions li { padding: 0.75rem 0.8rem; }
-  .map-hint { bottom: calc(9% + 60px); }
+  .map-hint { bottom: calc(9% + 60px + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

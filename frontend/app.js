@@ -103,7 +103,7 @@ function render(state = {}) {
           </g>
         </g>
       </svg>
-      <span class="logo-word">LightMatter</span>
+      <span class="logo-word" translate="no">LightMatter</span>
     </div>
 
     <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite" aria-label="Location summary">
@@ -148,10 +148,10 @@ function render(state = {}) {
 
     <div class="searchwrap">
       <ul class="suggestions panel" id="suggestions" hidden role="listbox"></ul>
-      <p class="toast panel" id="toast" hidden></p>
+      <p class="toast panel" id="toast" role="status" aria-live="polite" hidden></p>
       <div class="search">
         <span class="glyph" aria-hidden="true">⌕</span>
-        <input id="q" type="text" placeholder="Enter a city, or click the map"
+        <input id="q" type="text" placeholder="Enter a city, or click the map…"
                autocomplete="off" aria-label="Search for a place"
                role="combobox" aria-expanded="false"
                aria-controls="suggestions" aria-autocomplete="list"
@@ -224,7 +224,7 @@ function infoBody(state) {
             <p class="lede">${esc(state.error)}</p>`;
   }
   if (state.loading) {
-    return `<p class="eyebrow">Reading the sky</p>
+    return `<p class="eyebrow">Reading the sky…</p>
             <h2 class="display info-title">${esc(state.label || "")}</h2>
             <div class="scoreline">
               <div class="scorebox"><div class="skeleton sk-score"></div><div class="skeleton sk-label"></div></div>
@@ -260,9 +260,9 @@ function infoBody(state) {
 
     ${
       d.score != null && d.potentialScore != null && d.score > d.potentialScore
-        ? `<p class="score-note dim">Tonight is running ahead of this site's baseline — there's live
-             aurora activity in the forecast, which "at its best" deliberately excludes since
-             aurora chance isn't a stable property of a place.</p>`
+        ? `<p class="score-note dim">Tonight is running ahead of this site’s baseline — there’s live
+             aurora activity in the forecast, which “at its best” deliberately excludes since
+             aurora chance isn’t a stable property of a place.</p>`
         : ""
     }
 
@@ -291,7 +291,7 @@ function infoBody(state) {
 
     <div class="readout mono">
       ${row("Cloud cover", formatCloud(d.sources?.clouds))}
-      ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
+      ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
       ${row("Stars visible", stars ? `${formatCount(stars.visibleTonight)} · to mag ${stars.limitingMagnitude}` : "—")}
       ${row("Moon", moon?.dataAvailable ? `${moon.phaseName} · ${moon.illuminatedFraction}% lit` : "—")}
       ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
@@ -319,7 +319,7 @@ function darkSiteButtonMarkup() {
           ? `<p class="darksite-status mono dim">
                ${
                  darkSiteSearch.mode === "tonight"
-                   ? "Checking tonight's forecast at nearby dark sites…"
+                   ? "Checking tonight’s forecast at nearby dark sites…"
                    : "Searching for the nearest dark-enough site…"
                }
              </p>`
@@ -348,17 +348,17 @@ function darkSiteDisclaimer(ds) {
 
   let body;
   if (km < DARKSITE_NEAR_ZERO_KM) {
-    body = `You were already close to a qualifying dark site — this spot is only ${km} km from ${originLabel}.`;
+    body = `You were already close to a qualifying dark site — this spot is only ${km}&nbsp;km from ${originLabel}.`;
   } else if (ds.mode === "tonight" && ds.weatherMatched === false) {
     body =
       `${esc(ds.weatherMessage || "No clear weather among the nearest dark-enough sites tonight")} — ` +
-      `this is the closest one anyway, ${km} km from ${originLabel}. Expect ${esc(formatCloud(ds.weather))}.`;
+      `this is the closest one anyway, ${km}&nbsp;km from ${originLabel}. Expect ${esc(formatCloud(ds.weather))}.`;
   } else if (ds.mode === "tonight") {
-    body = `The nearest site with clear, dark skies tonight — ${km} km from ${originLabel}.`;
+    body = `The nearest site with clear, dark skies tonight — ${km}&nbsp;km from ${originLabel}.`;
   } else {
     body =
-      `The nearest site dark enough to qualify — ${km} km from ${originLabel}. ` +
-      `This search only checked darkness, not tonight's weather — see cloud cover below.`;
+      `The nearest site dark enough to qualify — ${km}&nbsp;km from ${originLabel}. ` +
+      `This search only checked darkness, not tonight’s weather — see cloud cover below.`;
   }
 
   return `<div class="darksite-disclaimer">
@@ -746,7 +746,7 @@ async function runDarkSiteSearch(mode) {
       // Leave darkSitePopupOpen as-is: the popup reopens to the two choices
       // rather than collapsing, so a retry with the other mode is one click.
       darkSiteSearch = null;
-      toast(data.message || "Couldn't find a dark site near here.");
+      toast(data.message || "Couldn’t find a dark site near here.");
       render({});
       return;
     }
@@ -769,7 +769,7 @@ async function runDarkSiteSearch(mode) {
   } catch (err) {
     if (requestId !== darkSiteRequestId) return;
     darkSiteSearch = null;
-    toast(err.message || "Couldn't reach the dark-site search.");
+    toast(err.message || "Couldn’t reach the dark-site search.");
     render({});
   }
 }
