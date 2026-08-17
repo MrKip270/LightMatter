@@ -1,6 +1,6 @@
 # LightMatter — Roadmap
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 What's built, what's left, and what's optional. See [`PRD.md`](PRD.md) for the
 product spec and the reasoning behind decisions already made.
@@ -23,13 +23,14 @@ product spec and the reasoning behind decisions already made.
 | Map-first interface | — | Full-bleed map, summary panel, layer rail, locate pin |
 | Twilight handling | — | Night window is astronomical dusk→dawn, falls back to sunset/sunrise at high latitudes |
 | Nearest dark site | `/api/darksite`, `/api/darksite/tonight` | Grid walk outward from the point; frontend popup offers "clear tonight" vs "dark regardless of forecast" |
-| Test suite | — | 158 tests, `npm test`, no dependencies |
+| Aurora overlay | `/api/aurora/tile/...` | Server-rendered PNG tiles from NOAA's OVATION grid, 5-min shared cache, opacity slider, legend |
+| Test suite | — | 221 tests, `npm test`, no dependencies, grouped-by-file output |
 
 ---
 
 ## Tier 1 — Needed before this is trustworthy
 
-**1. ~~A real test suite.~~ DONE — 92 tests, `npm test`.** Kept here for the
+**1. ~~A real test suite.~~ DONE — 221 tests, `npm test`.** Kept here for the
 reasoning, which still applies to everything added from now on. `routes/sky.js`
 exports its combining logic as pure functions and every source exports its
 helpers, but everything so far has been verified with throwaway scripts. Three
@@ -98,6 +99,15 @@ supermoon is meaningfully brighter) and atmospheric extinction.
 magnitude optimistic for small towns ringed by wilderness (Tromsø). A finer grid,
 or a hybrid that keeps high resolution near populated areas, would fix it.
 
+**11b. Dark-site search can land in water.** `findNearestDarkSite` /
+`findNearestGoodWeatherDarkSite` (`backend/sources/darksite.js`) walk the light
+pollution grid outward and return the first cell that clears the SQM threshold
+— open ocean is unlit, so it clears trivially and the search has no concept of
+land vs. water to prefer instead. Coastal and island searches can recommend a
+point in the ocean, which is not a usable stargazing destination. Needs a land
+mask (or equivalent land/water check) folded into candidate selection, not just
+into the darkness threshold.
+
 ---
 
 ## Tier 4 — Features worth having
@@ -149,9 +159,23 @@ Cloud cover already appears in the location summary as a percentage and a
 verdict, which is the more useful form anyway — "82% average tonight, overcast"
 answers the question directly, where a grey wash over a map does not.
 
-**16. Hourly forecast chart.** `/api/sky` already returns a full `timeline` with
-per-hour cloud cover, moon altitude, and effective SQM. Nothing renders it yet —
-the data is sitting there unused.
+**16. ~~Hourly forecast chart.~~ DONE.** Two stacked single-axis panels
+(`frontend/timelinechart.js`, pure geometry, tested) — cloud cover and
+effective SQM never shared one dual-axis chart, since they're different
+units. Moon altitude isn't a third trace; its effect is already folded into
+effectiveSqm, so it only gets rise/set tick marks. The SQM points are
+coloured with the exact same `interpolateColour()` scale the map's
+light-pollution legend uses, fed by the same `legendStops` already fetched
+for that legend — one physical reading, one colour, everywhere it appears.
+Hover crosshair + tooltip, keyboard arrow-key navigation, and a table-view
+fallback (accessibility non-negotiable: every charted value reachable
+without hovering). One bug caught in browser testing before shipping: the
+SQM dot's ring was originally the panel's own background colour (matching
+the map legend's separation-ring convention), but the SQM palette runs to
+near-black at pristine sites — measured 1.01:1 contrast against the panel,
+same silent-failure-legend class of bug as the aurora overlay fix. Ring
+colour is a fixed light neutral instead, so the darkest (best) readings
+don't become the least visible dots on the chart.
 
 **17. ~~Twilight handling.~~ DONE.** Night window now runs astronomical
 dusk→dawn (sun 18° below horizon), with graceful fallback to sunset/sunrise at
@@ -172,9 +196,10 @@ Still outstanding from that work: an audit against the Vercel Web Interface
 Guidelines using the `web-design-guidelines` skill, which is a reviewer rather
 than a designer and is best run now that the markup has settled.
 
-**19. Accessibility.** Verdict colors currently pair with text labels (good), but
-the whole thing needs a keyboard and screen-reader pass. Autocomplete is the
-likely weak point — a `<ul>` of click handlers isn't reachable by keyboard.
+**19. ~~Accessibility.~~ DONE.** Full pass: combobox ARIA pattern for the
+autocomplete (was the predicted weak point), keyboard navigation,
+`aria-activedescendant`, touch target sizing. Impeccable audit scored 19/20 —
+the one remaining point (concurrent backdrop-filter layers) is intentional.
 
 **20. Deployment.** Nothing is deployed. The 23 MB grid loads into memory at
 startup, which rules out some serverless platforms and is worth knowing before
@@ -199,8 +224,10 @@ social features.
 3. ~~Twilight handling~~ (4.17) — done
 4. ~~Find nearest dark site~~ (4.15) — done
 5. ~~Aurora overlay~~ (4.15c) — done
-6. Severe weather (2.4) — completes a PRD story, no key needed
-7. Hourly chart (4.16) — data already exists, pure frontend
-8. Planets via ephemeris (2.6) — biggest single upgrade to the report
-9. Caching (1.3) — before anyone else uses it
-10. Fold the prototype in (5.18) — once the content has stopped moving
+6. ~~Accessibility~~ (5.19) — done
+7. ~~Hourly chart~~ (4.16) — done
+8. Dark-site search can land in water (3.11b) — coastal/island searches can currently recommend a point in the ocean
+9. Severe weather (2.4) — completes a PRD story, no key needed
+10. Planets via ephemeris (2.6) — biggest single upgrade to the report
+11. Caching (1.3) — before anyone else uses it
+12. Web Interface Guidelines audit (5.18 residual) — run `web-design-guidelines` now that the hourly chart / aurora overlay markup has settled

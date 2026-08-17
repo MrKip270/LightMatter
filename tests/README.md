@@ -1,6 +1,6 @@
 # Tests
 
-204 tests, no dependencies — Node's built-in runner (`node --test`).
+221 tests, no dependencies — Node's built-in runner (`node --test`).
 
 ## Running them
 

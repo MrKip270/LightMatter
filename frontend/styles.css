@@ -337,6 +337,82 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 .readout .rk { color: var(--text-faint); letter-spacing: 0.04em; }
 .readout .rv { text-align: right; }
 
+/* ============================================================================
+   HOURLY TIMELINE CHART — two stacked single-axis panels (cloud cover,
+   effective sky darkness), never one dual-axis chart. The SQM dots are
+   coloured by frontend/timelinechart.js's interpolateColour() against the
+   SAME legend stops the map's light-pollution overlay uses — one scientific
+   colour meaning for one physical quantity everywhere it appears. Cloud
+   cover has no such existing scale in this app, so it takes a single chrome
+   accent (--brick) instead, same as the score ramp already does elsewhere
+   in this panel.
+   ========================================================================= */
+.chart-section { margin-top: 1.3rem; }
+.timeline-chart { position: relative; margin-top: 0.4rem; }
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: crosshair;
+  border-radius: 8px;
+}
+.chart-svg:focus-visible { outline: 2px solid var(--rose); outline-offset: 3px; }
+
+.chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-line.chart-cloud { stroke: var(--brick); }
+.chart-line.chart-sqm { stroke: var(--orchid); }
+.chart-area.chart-cloud { fill: color-mix(in srgb, var(--brick) 10%, transparent); stroke: none; }
+/* A light ring, not a surface-matching one: the SQM palette runs to
+   near-black at pristine sites (rgb(8,10,30), ~1:1 against this panel), so a
+   ring meant to blend into the background would make the BEST readings the
+   least visible dots on the chart — the ring's job here is to guarantee
+   every dot is locatable, at the cost of a visible outline on the bright end
+   of the scale too. */
+.chart-dot { stroke: var(--text-faint); stroke-width: 1.25; }
+
+.chart-best { fill: color-mix(in srgb, var(--peak) 10%, transparent); }
+
+.chart-moon { fill: var(--text-faint); }
+.chart-axis-label {
+  fill: var(--text-faint);
+  font-family: var(--data);
+  font-size: 9px;
+}
+
+.chart-crosshair { stroke: var(--rose); stroke-width: 1; }
+
+.chart-tooltip {
+  position: absolute;
+  top: -1.6rem;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  background: var(--ink);
+  border: 1px solid var(--edge-lit);
+  color: var(--text);
+  pointer-events: none;
+}
+
+.chart-caption { font-size: 11px; line-height: 1.5; margin: 0.5rem 0 0; }
+
+.chart-table-toggle { margin-top: 0.5rem; font-size: 12px; }
+.chart-table-toggle summary { color: var(--rose); cursor: pointer; }
+.chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  font-size: 11px;
+}
+.chart-table th, .chart-table td {
+  text-align: right;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px dashed var(--edge);
+}
+.chart-table th[scope="row"] { text-align: left; color: var(--text-faint); font-weight: 400; }
+.chart-table thead th { color: var(--text-faint); font-weight: 400; border-bottom: 1px solid var(--edge); }
+
 .attrib { font-size: 10px; line-height: 1.5; margin-top: 1.2rem; color: var(--text-faint); }
 .lede { color: var(--text-dim); font-size: 14.5px; line-height: 1.55; }
 

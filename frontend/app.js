@@ -218,6 +218,105 @@ function auroraLegendMarkup() {
           </div>`;
 }
 
+// The two-panel hourly chart: cloud cover on top, effective sky darkness
+// below, sharing an hour axis. Never a single dual-axis chart — cloud cover
+// (%) and SQM (mag/arcsec²) are different units, and a shared scale would
+// misrepresent both. The SQM points are coloured with the exact same
+// interpolateColour() scale the map's light-pollution legend uses (fed by
+// the same `legendStops`, fetched once in loadLegend()), so the same reading
+// is the same colour everywhere it appears in the app.
+function timelineChartMarkup(d) {
+  if (!d.timeline) return "";
+  const chart = buildTimelineChart(d.timeline, d.bestWindow, legendStops);
+  if (!chart) return "";
+
+  const bestBand = chart.bestWindowRect
+    ? `<rect class="chart-best" x="${chart.bestWindowRect.x.toFixed(2)}" y="${chart.bestWindowRect.top}"
+             width="${chart.bestWindowRect.width.toFixed(2)}" height="${chart.bestWindowRect.height}" />`
+    : "";
+
+  const cloudAreas = chart.cloud.areaPaths.map((p) => `<path class="chart-area chart-cloud" d="${p}" />`).join("");
+  const cloudLines = chart.cloud.linePaths.map((p) => `<path class="chart-line chart-cloud" d="${p}" />`).join("");
+
+  const sqmLines = chart.sqm.linePaths.map((p) => `<path class="chart-line chart-sqm" d="${p}" />`).join("");
+  const sqmDots = chart.sqm.points
+    .filter((p) => p.y !== null)
+    .map(
+      (p) =>
+        `<circle class="chart-dot" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="3.2"
+                 fill="${p.colour || "var(--text-faint)"}" />`
+    )
+    .join("");
+
+  const moonTicks = chart.moonTicks
+    .map(
+      (t) =>
+        `<path class="chart-moon" transform="translate(${t.x.toFixed(2)},${(chart.axisTop - 3).toFixed(2)})"
+               d="${t.kind === "rise" ? "M-4,0 L4,0 L0,-6 Z" : "M-4,-6 L4,-6 L0,0 Z"}">
+           <title>Moon${t.kind === "rise" ? "rise" : "set"}</title>
+         </path>`
+    )
+    .join("");
+
+  const lastIndex = d.timeline.length - 1;
+  const xLabels = chart.xTicks
+    .map((t) => {
+      // Centered labels clip against the SVG's own edges at the first and
+      // last tick, since text-anchor="middle" centers on x=4/x=596 and half
+      // the glyphs land outside the viewBox, which the SVG clips by default.
+      const anchor = t.index === 0 ? "start" : t.index === lastIndex ? "end" : "middle";
+      return `<text class="chart-axis-label" x="${t.x.toFixed(2)}" y="${chart.height - 3}" text-anchor="${anchor}">${esc(
+        formatHour(t.time)
+      )}</text>`;
+    })
+    .join("");
+
+  const rows = buildTableRows(d.timeline)
+    .map(
+      (r) => `<tr>
+        <th scope="row">${esc(formatHour(r.time))}</th>
+        <td>${r.cloudCover === null ? "—" : r.cloudCover + "%"}</td>
+        <td>${r.effectiveSqm === null ? "—" : r.effectiveSqm}</td>
+        <td>${r.moonAltitude === null ? "—" : Math.round(r.moonAltitude) + "°"}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `
+    <div class="chart-section">
+      <p class="k">Tonight, hour by hour</p>
+      <div class="timeline-chart">
+        <svg class="chart-svg" viewBox="${chart.viewBox}" preserveAspectRatio="none" tabindex="0"
+             role="img" aria-label="Hourly cloud cover and effective sky darkness tonight, from ${esc(
+               formatHour(d.timeline[0].time)
+             )} to ${esc(formatHour(d.timeline[d.timeline.length - 1].time))}">
+          ${bestBand}
+          ${cloudAreas}
+          ${cloudLines}
+          ${sqmLines}
+          ${sqmDots}
+          ${moonTicks}
+          ${xLabels}
+          <line class="chart-crosshair" x1="0" x2="0" y1="0" y2="${chart.axisTop}" hidden />
+        </svg>
+        <div class="chart-tooltip mono" hidden></div>
+      </div>
+      <p class="chart-caption dim">
+        Cloud cover (top) and effective sky darkness (bottom, higher is darker) —
+        ${chart.moonTicks.length ? "triangles mark moonrise/moonset." : "no moonrise or moonset tonight."}
+      </p>
+      <details class="chart-table-toggle">
+        <summary>View as a table</summary>
+        <table class="chart-table mono">
+          <thead>
+            <tr><th scope="col">Hour</th><th scope="col">Cloud</th><th scope="col">Sky (mag/arcsec²)</th><th scope="col">Moon alt.</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </details>
+    </div>`;
+}
+
 function infoBody(state) {
   if (state.error) {
     return `<p class="eyebrow">Couldn’t read the sky</p>
@@ -297,6 +396,8 @@ function infoBody(state) {
       ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
       ${eclipse ? row("Lunar eclipse", eclipse) : ""}
     </div>
+
+    ${timelineChartMarkup(d)}
 
     <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
 }
@@ -492,6 +593,8 @@ function wire(state) {
     if (auroraLayer) auroraLayer.setOpacity(auroraOpacity);
   });
 
+  wireTimelineChart();
+
   ui.querySelector(".menu").addEventListener("click", () => {
     infoOpen = !infoOpen;
     render({});
@@ -534,6 +637,59 @@ function wire(state) {
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
   }
+}
+
+// Hover/keyboard on the hourly chart. Direct DOM mutation, not render() per
+// pointermove — same reasoning as the opacity sliders, which call
+// layer.setOpacity() instead of re-rendering the whole panel on every input
+// event. A crosshair that rebuilt the DOM 60 times a second would be janky
+// and would also fight the browser's own hit-testing mid-drag.
+function wireTimelineChart() {
+  const svg = ui.querySelector(".chart-svg");
+  if (!svg || !report?.timeline) return;
+
+  const timeline = report.timeline;
+  const n = timeline.length;
+  const crosshair = svg.querySelector(".chart-crosshair");
+  const tooltip = ui.querySelector(".chart-tooltip");
+
+  const showAt = (index) => {
+    const hour = timeline[index];
+    if (!hour) return;
+    const x = xForIndex(index, n);
+    crosshair.setAttribute("x1", x);
+    crosshair.setAttribute("x2", x);
+    crosshair.hidden = false;
+    tooltip.hidden = false;
+    tooltip.textContent =
+      `${formatHour(hour.time)} — ` +
+      `${hour.cloudCover === null ? "cloud —" : hour.cloudCover + "% cloud"} · ` +
+      `${hour.effectiveSqm === null ? "sky —" : hour.effectiveSqm + " mag/arcsec²"}`;
+    tooltip.style.left = `${(x / VIEW_WIDTH) * 100}%`;
+  };
+
+  const hide = () => {
+    crosshair.hidden = true;
+    tooltip.hidden = true;
+  };
+
+  svg.addEventListener("pointermove", (event) => {
+    const rect = svg.getBoundingClientRect();
+    const localX = ((event.clientX - rect.left) / rect.width) * VIEW_WIDTH;
+    showAt(nearestIndex(localX, n));
+  });
+  svg.addEventListener("pointerleave", hide);
+
+  let focusIndex = 0;
+  svg.addEventListener("focus", () => showAt(focusIndex));
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") focusIndex = Math.min(focusIndex + 1, n - 1);
+    else if (event.key === "ArrowLeft") focusIndex = Math.max(focusIndex - 1, 0);
+    else return;
+    event.preventDefault();
+    showAt(focusIndex);
+  });
 }
 
 // A short message above the search bar. Positioned out of flow, like the

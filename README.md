@@ -53,6 +53,13 @@ Early development, built step by step as a learning project. Working today:
   from the requested point; the grid is already in memory, so no extra network
   call for the plain search, and the forecast-checked search fans out to
   Open-Meteo for the nearest few candidates.
+- **Hourly timeline chart** — cloud cover and effective sky darkness plotted
+  across tonight's dark hours as two stacked panels (never one dual-axis
+  chart — the two are different units), with a shared best-window highlight,
+  moonrise/moonset ticks, hover crosshair, keyboard navigation, and a table
+  view. The sky-darkness points share the exact colour scale the map's
+  light-pollution legend uses, so a given reading is the same colour
+  everywhere it appears.
 
 The two scores answer different questions:
 
@@ -123,12 +130,14 @@ LightMatter/
 │   ├── styles.css           # styling
 │   ├── coords.js            # pure coordinate maths  — no DOM, so it's testable
 │   ├── format.js            # pure display formatting — same reason
+│   ├── timelinechart.js     # pure hourly-chart geometry & colour — same reason
 │   └── app.js               # DOM wiring: map, search, panel, fetch + render — logo is inline SVG in here, no asset file
 ├── tools/                   # one-off dev scripts, not part of the server
 │   ├── inspect-atlas.js     #   print GeoTIFF header + probe pixels
 │   └── build-lightpollution.js  # downsample the atlas into backend/data/
 └── docs/
-    └── PRD.md               # product requirements
+    ├── PRD.md               # product requirements
+    └── ROADMAP.md           # what's built, what's left, suggested order
 ```
 
 **Why `coords.js` and `format.js` are separate from `app.js`:** they contain no
@@ -271,7 +280,7 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. ~~**A real test suite**~~ — done. 204 tests, no network, ~2s, grouped by
+1. ~~**A real test suite**~~ — done. 221 tests, no network, ~2s, grouped by
    file in `npm test`'s output rather than listed individually.
 2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
    (sun 18° below horizon) rather than sunset/sunrise.
@@ -281,11 +290,12 @@ Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 4. ~~**Aurora overlay**~~ — done. NOAA's OVATION grid rendered as map tiles the
    same way light pollution is, with its own toggle, opacity slider, legend,
    and forecast timestamp.
-5. **Hourly timeline chart** — `/api/sky` already returns per-hour cloud cover,
-   moon altitude, and effective SQM in its `timeline` field; nothing renders it
-   yet.
-6. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
+5. ~~**Hourly timeline chart**~~ — done. Two stacked panels (cloud cover, effective
+   sky darkness) sharing an hour axis, in `frontend/timelinechart.js`.
+6. **Dark-site search can land in water** — the grid walk has no land/water
+   check, so a coastal or island search can recommend a point in the ocean.
+7. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
    would turn the static "bright planets" row into "Jupiter, southeast, 40° up".
-7. **Caching** — every search hits Open-Meteo twice and NOAA once.
+8. **Caching** — every search hits Open-Meteo twice and NOAA once.
 
 Styling stays deliberately minimal until the remaining data sources land.
