@@ -24,13 +24,13 @@ product spec and the reasoning behind decisions already made.
 | Twilight handling | — | Night window is astronomical dusk→dawn, falls back to sunset/sunrise at high latitudes |
 | Nearest dark site | `/api/darksite`, `/api/darksite/tonight` | Grid walk outward from the point; frontend popup offers "clear tonight" vs "dark regardless of forecast" |
 | Aurora overlay | `/api/aurora/tile/...` | Server-rendered PNG tiles from NOAA's OVATION grid, 5-min shared cache, opacity slider, legend |
-| Test suite | — | 221 tests, `npm test`, no dependencies, grouped-by-file output |
+| Test suite | — | 226 tests (225 passed, 1 skipped), `npm test`, no dependencies, grouped-by-file output |
 
 ---
 
 ## Tier 1 — Needed before this is trustworthy
 
-**1. ~~A real test suite.~~ DONE — 221 tests, `npm test`.** Kept here for the
+**1. ~~A real test suite.~~ DONE — 226 tests, `npm test`.** Kept here for the
 reasoning, which still applies to everything added from now on. `routes/sky.js`
 exports its combining logic as pure functions and every source exports its
 helpers, but everything so far has been verified with throwaway scripts. Three
@@ -201,6 +201,31 @@ autocomplete (was the predicted weak point), keyboard navigation,
 `aria-activedescendant`, touch target sizing. Impeccable audit scored 19/20 —
 the one remaining point (concurrent backdrop-filter layers) is intentional.
 
+**19b. Remaining Impeccable findings.** Three critique passes over
+`frontend/index.html` (`.impeccable/critique/`) on 2026-08-17 drove several
+fixes already shipped (score-band contrast, dense-list chunking, the
+cloud-verdict contradiction, degraded-source messaging, chart-tooltip
+clamping — see `CLAUDE.md`'s current-state log). What's left, all P2/P3:
+  - Tiny text under the 11px functional-text floor in more places than the
+    first attribution fix covered: `.attrib`, `p.attrib` (info-panel
+    sidebar), `.darksite-disclaimer p`. Bump all to ≥12px in one pass rather
+    than fixing them one critique cycle at a time.
+  - The hourly chart's last two x-axis tick labels can crowd together —
+    `xTicks` in `frontend/timelinechart.js` keeps every third hour plus the
+    final index unconditionally, with no check for how close that final tick
+    sits to its neighbour.
+  - `.window-card` (featured best-window card) and `.window` (the
+    no-best-window fallback) are two different components carrying two
+    different accent tokens (`--peak` vs. `--brick`) for what a user reads as
+    the same "best window" concept.
+  - Unconfirmed, needs a manual network-tab check: searching "Alice Springs"
+    left the search box reading "Australia" after the pin/score/map already
+    updated correctly — may be a genuine country-level reverse-geocode
+    response for a remote point rather than a bug.
+  - No visible cancel/abort control for an in-flight dark-site search.
+  - Aurora toggle is discoverable only after opening the layers rail, which
+    is exactly the feature the aurora-chaser persona comes to the site for.
+
 **20. Deployment.** Nothing is deployed. The 23 MB grid loads into memory at
 startup, which rules out some serverless platforms and is worth knowing before
 picking a host.
@@ -231,3 +256,4 @@ social features.
 10. Planets via ephemeris (2.6) — biggest single upgrade to the report
 11. Caching (1.3) — before anyone else uses it
 12. Web Interface Guidelines audit (5.18 residual) — run `web-design-guidelines` now that the hourly chart / aurora overlay markup has settled
+13. Remaining Impeccable findings (5.19b) — small, mostly independent P2/P3 fixes; can be picked off individually

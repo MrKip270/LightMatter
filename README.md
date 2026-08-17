@@ -280,7 +280,7 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. ~~**A real test suite**~~ — done. 221 tests, no network, ~2s, grouped by
+1. ~~**A real test suite**~~ — done. 226 tests, no network, ~2s, grouped by
    file in `npm test`'s output rather than listed individually.
 2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
    (sun 18° below horizon) rather than sunset/sunrise.

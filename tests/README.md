@@ -1,6 +1,6 @@
 # Tests
 
-221 tests, no dependencies — Node's built-in runner (`node --test`).
+226 tests (225 passed, 1 skipped), no dependencies — Node's built-in runner (`node --test`).
 
 ## Running them
 
