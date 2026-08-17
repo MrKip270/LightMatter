@@ -365,6 +365,16 @@ function infoBody(state) {
         : ""
     }
 
+    ${
+      // "fair" and up (score >= 45, see scoreBand in format.js) doesn't need
+      // this nudge — it's for the poor/bad bands, right where the button
+      // below already lives, so seeing a low score and the way out of it
+      // land in the same glance.
+      d.score != null && d.score < 45
+        ? `<p class="score-note dim">Tonight’s score is low here — worth checking a darker sky nearby.</p>`
+        : ""
+    }
+
     ${darkSiteButtonMarkup()}
 
     <p class="headline">${esc(d.headline)}</p>
@@ -382,30 +392,50 @@ function infoBody(state) {
     ${timelineChartMarkup(d)}
 
     <p class="section-label">What you'll see tonight</p>
+    <p class="targets-subhead dim">Naked eye</p>
     <ul class="targets">
-      ${d.targets
-        .map(
-          (t) =>
-            `<li><span>${esc(t.name)}</span><span class="v" data-v="${esc(t.verdict)}">${esc(t.verdict)}</span></li>`
-        )
-        .join("")}
+      ${targetsList(d.targets.slice(0, 3))}
+    </ul>
+    <p class="targets-subhead dim">Needs a dark sky</p>
+    <ul class="targets">
+      ${targetsList(d.targets.slice(3))}
     </ul>
 
     <p class="section-label">Conditions</p>
     <div class="readout mono">
       ${row("Cloud cover", formatCloud(d.sources?.clouds))}
       ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
-      ${row("Stars visible", stars ? `${formatCount(stars.visibleTonight)} · to mag ${stars.limitingMagnitude}` : "—")}
       ${row("Moon", moon?.dataAvailable ? `${moon.phaseName} · ${moon.illuminatedFraction}% lit` : "—")}
-      ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
-      ${eclipse ? row("Lunar eclipse", eclipse) : ""}
     </div>
+
+    ${
+      // Least-consulted facts, same progressive-disclosure idiom as the
+      // hourly table's own "View as a table" toggle above.
+      stars || d.sky.moonPenaltyMagnitudes >= 0.3 || eclipse
+        ? `<details class="chart-table-toggle">
+             <summary>More detail</summary>
+             <div class="readout mono" style="margin-top: 0.5rem">
+               ${stars ? row("Stars visible", `${formatCount(stars.visibleTonight)} · to mag ${stars.limitingMagnitude}`) : ""}
+               ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
+               ${eclipse ? row("Lunar eclipse", eclipse) : ""}
+             </div>
+           </details>`
+        : ""
+    }
 
     <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
 }
 
 const row = (key, value) =>
   `<div class="r"><span class="rk">${esc(key)}</span><span class="rv">${esc(value)}</span></div>`;
+
+const targetsList = (targets) =>
+  targets
+    .map(
+      (t) =>
+        `<li><span>${esc(t.name)}</span><span class="v" data-v="${esc(t.verdict)}">${esc(t.verdict)}</span></li>`
+    )
+    .join("");
 
 // The button lives directly below the current location's scores, and its
 // inline popup (not a floating overlay — nothing here anchors a popup to an

@@ -97,7 +97,12 @@ html, body {
   background: color-mix(in srgb, var(--panel) 78%, transparent) !important;
   color: var(--text-faint) !important;
   font-family: var(--data);
-  font-size: 10px;
+  /* Leaflet's own default is 10px — below the 11px functional-text floor,
+     and this line carries real license-critical links (CC BY-NC 4.0 for the
+     light-pollution atlas among them), not decoration. */
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 6px;
 }
 .leaflet-control-attribution a { color: var(--text-dim) !important; }
 .leaflet-control-zoom a {
@@ -317,7 +322,19 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   margin: 1.1rem 0 0.5rem;
 }
 
-.targets { list-style: none; margin: 0 0 1.4rem; padding: 0; }
+/* Sub-grouping inside "What you'll see tonight" — the 5-item target list
+   exceeds the ≤4-per-group chunking guideline on its own, so it splits into
+   two ≤3 groups. Quieter than .section-label: this names a subset WITHIN an
+   already-labelled section, not the section itself. */
+.targets-subhead {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  margin: 0.9rem 0 0.3rem;
+}
+.targets-subhead:first-of-type { margin-top: 0; }
+
+.targets { list-style: none; margin: 0 0 0.6rem; padding: 0; }
+.targets:last-of-type { margin-bottom: 1.4rem; }
 .targets li {
   display: flex;
   justify-content: space-between;
