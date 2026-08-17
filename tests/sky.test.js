@@ -402,6 +402,35 @@ test("the report survives clouds alone being missing", () => {
   assert.ok(r.potentialScore > 90, "but the site's potential is still knowable");
 });
 
+// --- scoreTonight (used by darksite.js to score arbitrary candidates) --------
+
+test("scoreTonight agrees with buildReport's score for the same inputs", () => {
+  // scoreTonight exists so darksite.js can score any candidate the same way
+  // /api/sky scores its own query point. If this ever drifts from buildReport,
+  // the two "same number" guarantees the dark-site search depends on break.
+  const site = f.SITES.cherrySprings;
+  for (const cover of [f.CLEAR, f.OVERCAST, f.HALF, f.BROKEN]) {
+    const clouds = f.night(f.NEW_MOON_NIGHT, cover);
+    const light = f.lightPollution(site.sqm);
+    const expected = report(clouds, site.sqm, site).score;
+    assert.equal(h.scoreTonight(clouds, light, site.lat, site.lon), expected);
+  }
+});
+
+test("scoreTonight excludes the aurora bonus, unlike the full report", () => {
+  const site = f.SITES.tromso;
+  const clouds = f.night(f.NEW_MOON_NIGHT, f.CLEAR);
+  const light = f.lightPollution(site.sqm);
+
+  const withAuroraReport = report(clouds, site.sqm, site, f.aurora(90)).score;
+  const scoreTonightResult = h.scoreTonight(clouds, light, site.lat, site.lon);
+
+  assert.ok(
+    scoreTonightResult < withAuroraReport,
+    "scoreTonight must not include the aurora bonus buildReport applied"
+  );
+});
+
 test("headline always returns a non-empty string", () => {
   // Fuzz across the whole score range so no band can fall through and produce
   // undefined in the UI.

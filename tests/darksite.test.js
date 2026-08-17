@@ -1,5 +1,11 @@
 // Tests for the nearest dark site search.
 //
+// The core invariant, for BOTH search modes: never recommend somewhere WORSE
+// than where the user already is. A candidate must beat the query point's own
+// darkness (nearby mode) or its own real tonight-score (tonight mode) — merely
+// clearing a fixed floor or a coarse weather verdict is not enough, since the
+// query point itself might already be well past either of those.
+//
 // Needs backend/data/lightpollution.bin, same as lightpollution.test.js —
 // skipped if it's absent on a fresh clone that hasn't run the build tool.
 
@@ -13,6 +19,9 @@ const {
   findNearestGoodWeatherDarkSite,
   helpers: h,
 } = require("../backend/sources/darksite");
+const { darknessFactor } = require("../backend/sources/scoring");
+const { getLightPollution } = require("../backend/sources/lightpollution");
+const f = require("./helpers/fixtures");
 
 const GRID_PATH = path.join(__dirname, "..", "backend", "data", "lightpollution.bin");
 const gridExists = fs.existsSync(GRID_PATH);
@@ -57,26 +66,63 @@ test("ring cell count grows by 8 per radius, the ring perimeter", () => {
   }
 });
 
-// --- The search -------------------------------------------------------------
+// --- The search: nearby/potential mode ---------------------------------------
 
-test("a site that already meets the threshold returns itself", { skip: !gridExists }, () => {
-  // Cherry Springs State Park is ~21.93 SQM — already above the 21.3 default.
+test("a genuinely darker cell nearby is preferred over an identical-sqm one farther out", {
+  skip: !gridExists,
+}, () => {
+  // Cherry Springs State Park is ~21.93 SQM. The real grid has a marginally
+  // darker cell (21.94) 4.9km away — verified empirically, not assumed.
   const result = findNearestDarkSite(41.6628, -77.8164);
   assert.equal(result.found, true);
-  assert.ok(result.distanceKm < 10, `expected near-zero distance, got ${result.distanceKm}`);
-  assert.ok(result.lightPollution.sqm >= 21.3);
+  assert.equal(result.originDataAvailable, true);
+  assert.equal(result.originSqm, 21.93);
+  assert.ok(
+    result.lightPollution.sqm > result.originSqm,
+    `must be strictly darker than the origin, got ${result.lightPollution.sqm} vs origin ${result.originSqm}`
+  );
 });
 
 test("a light-polluted city finds a farther, genuinely darker site", { skip: !gridExists }, () => {
   // Chicago Loop is ~17.15 SQM — well under the 21.3 default, so the search
   // must travel to find a qualifying cell.
+  const originSqm = getLightPollution(41.8827, -87.6233).sqm;
   const result = findNearestDarkSite(41.8827, -87.6233);
   assert.equal(result.found, true);
+  assert.equal(result.originSqm, originSqm);
   assert.ok(result.distanceKm > 10, `expected real travel, got ${result.distanceKm} km`);
   assert.ok(
     result.lightPollution.sqm >= 21.3,
     `found cell must meet the threshold, got ${result.lightPollution.sqm}`
   );
+  assert.ok(
+    result.lightPollution.sqm > originSqm,
+    `must beat Chicago's own ${originSqm}, got ${result.lightPollution.sqm}`
+  );
+});
+
+test("REGRESSION: an origin that already clears the floor is never sent somewhere darker-sounding but worse", {
+  skip: !gridExists,
+}, () => {
+  // This is the exact shape of the reported bug: a query point whose own sqm
+  // (faked here to 21.5, comfortably above the 21.3 default floor) sits closer
+  // to a cell that merely clears 21.3 (21.31, at 45.9km — confirmed via the
+  // OLD floor-only algorithm) than to any cell that's actually darker than
+  // 21.5 itself. The fix must skip the trap and either travel farther to a
+  // real improvement, or say found:false — never hand back something dimmer
+  // than 21.5.
+  const fakeOriginSqm = 21.5;
+  const lookupOrigin = () => ({ dataAvailable: true, sqm: fakeOriginSqm });
+
+  const result = findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin });
+
+  assert.equal(result.dataAvailable, true);
+  if (result.found) {
+    assert.ok(
+      result.lightPollution.sqm > fakeOriginSqm,
+      `must be strictly darker than the faked origin sqm ${fakeOriginSqm}, got ${result.lightPollution.sqm}`
+    );
+  }
 });
 
 test("outside the atlas extent returns no data, not an error", { skip: !gridExists }, () => {
@@ -92,17 +138,18 @@ test("a threshold nothing can reach returns found: false, not a crash", { skip: 
   const result = findNearestDarkSite(39.9, 116.4, 25); // Beijing
   assert.equal(result.dataAvailable, true);
   assert.equal(result.found, false);
-  assert.match(result.message, /no cell within/i);
+  assert.match(result.message, /25 mag\/arcsec/i);
 });
 
 test("the threshold is inclusive — a cell exactly at minSqm still qualifies", {
   skip: !gridExists,
 }, () => {
-  // Find a real cell's exact SQM, then search again using that exact value as
-  // the threshold. A stray `<` vs `<=` bug would exclude the cell that IS the
-  // answer, which "distanceKm < 10" alone wouldn't reliably expose.
-  const first = findNearestDarkSite(41.6628, -77.8164); // Cherry Springs
-  const exact = findNearestDarkSite(41.6628, -77.8164, first.lightPollution.sqm);
+  // Chicago's own sqm (~17.15) is far below any nearby qualifying cell, so
+  // this isolates the FLOOR's <-vs-<= boundary from the origin-comparison
+  // boundary (searching from an already-dark origin like Cherry Springs would
+  // instead collide with the new "no strict improvement nearby" path).
+  const first = findNearestDarkSite(41.8827, -87.6233, 21.3);
+  const exact = findNearestDarkSite(41.8827, -87.6233, first.lightPollution.sqm);
   assert.equal(exact.found, true);
   assert.equal(exact.lightPollution.sqm, first.lightPollution.sqm);
 });
@@ -113,7 +160,29 @@ test("every found result carries the same attribution as a direct lookup", { ski
   assert.match(result.lightPollution.attribution, /CC BY-NC/);
 });
 
-// --- Property: a stricter threshold can never be closer ---------------------
+test("an origin landing on a no-data pixel degrades to floor-only, flagged", {
+  skip: !gridExists,
+}, () => {
+  // Simulates a query point sitting exactly on a real-but-missing grid pixel
+  // (in bounds, but no reading) — a case getLightPollution's own dataAvailable
+  // flag already covers, but one that's impractical to locate a real
+  // coordinate for. Uses the same injection seam fetchWeather already
+  // established for the weather-aware search, applied to the origin lookup.
+  const lookupOrigin = () => ({ dataAvailable: false, sqm: null });
+
+  const withNoOrigin = findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin });
+  const floorOnly = findNearestDarkSite(41.8827, -87.6233, 21.3, {
+    lookupOrigin: () => ({ dataAvailable: false }),
+  });
+
+  assert.equal(withNoOrigin.originDataAvailable, false);
+  assert.equal(withNoOrigin.originSqm, null);
+  assert.equal(withNoOrigin.found, true);
+  // Degrades to exactly the floor-only answer — no origin to compare against.
+  assert.deepEqual(withNoOrigin.location, floorOnly.location);
+});
+
+// --- Property: never recommend something darker-sounding but actually worse ---
 
 test("raising the threshold never finds a closer (or equal-but-different) site", {
   skip: !gridExists,
@@ -142,24 +211,50 @@ test("raising the threshold never finds a closer (or equal-but-different) site",
   }
 });
 
-// --- The weather-aware search -------------------------------------------------
+test("PROPERTY: a found result is always strictly darker than the query point itself", {
+  skip: !gridExists,
+}, () => {
+  const points = [
+    [41.8827, -87.6233], // Chicago
+    [51.5072, -0.1276], // London
+    [35.6762, 139.6503], // Tokyo
+    [19.076, 72.8777], // Mumbai
+    [41.6628, -77.8164], // Cherry Springs — already near-optimal
+  ];
+  const thresholds = [19.5, 20.5, 21.3, 21.75];
+
+  for (const [lat, lon] of points) {
+    const originSqm = getLightPollution(lat, lon).sqm;
+    for (const minSqm of thresholds) {
+      const result = findNearestDarkSite(lat, lon, minSqm);
+      if (!result.found) continue;
+      assert.ok(
+        darknessFactor(result.lightPollution.sqm) > darknessFactor(originSqm),
+        `at (${lat}, ${lon}) threshold ${minSqm}: result sqm ${result.lightPollution.sqm} ` +
+          `is not strictly darker than the origin's own ${originSqm}`
+      );
+    }
+  }
+});
+
+// --- The search: weather-aware "tonight" mode ---------------------------------
 //
-// findNearestGoodWeatherDarkSite takes a fetchWeather override so these run
-// with no network, the same seam sky.js uses (buildReport takes already-
-// fetched source data rather than fetching it itself).
+// findNearestGoodWeatherDarkSite takes fetchWeather/lookupOrigin overrides so
+// these run with no network, the same seam scoring.js's buildReport uses
+// (take already-fetched source data rather than fetching it itself). Uses
+// tests/helpers/fixtures.js's night() builder so fakes drive genuinely
+// different computed scores, not just a boolean flag.
 
-function fakeClouds(verdict) {
-  return { dataAvailable: true, verdict, averageCloudCover: verdict === "Clear" ? 5 : 90 };
-}
-
-test("prefers the nearest candidate with clear weather, skipping cloudier closer ones", {
+test("prefers the nearest candidate whose real score beats the origin's, skipping worse ones", {
   skip: !gridExists,
 }, async () => {
   const calls = [];
   const fetchWeather = async (lat, lon) => {
-    const isGood = calls.length === 2; // the 3rd-nearest candidate is clear
+    const i = calls.length;
     calls.push({ lat, lon });
-    return fakeClouds(isGood ? "Clear" : "Overcast");
+    if (i === 0) return f.night(f.NEW_MOON_NIGHT, f.BROKEN); // the origin: mediocre
+    if (i <= 3) return f.night(f.NEW_MOON_NIGHT, f.OVERCAST); // 3 nearer candidates: worse
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR); // everything from here on: clearly better
   };
 
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
@@ -168,39 +263,28 @@ test("prefers the nearest candidate with clear weather, skipping cloudier closer
   });
 
   assert.equal(result.found, true);
-  assert.equal(result.weatherMatched, true);
   assert.equal(result.candidatesChecked, 8);
-  assert.deepEqual(result.location, calls[2]);
+  assert.ok(result.originScoreAvailable);
+  assert.ok(
+    result.score > result.originScore,
+    `winner's score ${result.score} must beat the origin's ${result.originScore}`
+  );
+  // calls[0] is the origin; calls[4] is the 4th candidate — the nearest one
+  // in the CLEAR group, matching the nearest-first selection.
+  assert.deepEqual(result.location, calls[4]);
 });
 
-test("falls back to the nearest candidate, flagged, when nothing is clear tonight", {
-  skip: !gridExists,
-}, async () => {
-  const fetchWeather = async () => fakeClouds("Overcast");
-
-  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
-    candidateCount: 5,
-    fetchWeather,
-  });
-
-  assert.equal(result.found, true);
-  assert.equal(result.weatherMatched, false);
-  assert.match(result.message, /no clear weather/i);
-
-  // Still the same nearest dark-enough site the plain endpoint would return —
-  // the weather check should narrow the choice, never relocate it.
-  const plain = findNearestDarkSite(41.8827, -87.6233, 21.3);
-  assert.deepEqual(result.location, plain.location);
-});
-
-test("a candidate whose forecast fetch fails is treated as not-clear, not fatal", {
+test("returns found:false when no candidate beats the origin's real score tonight", {
   skip: !gridExists,
 }, async () => {
   let calls = 0;
   const fetchWeather = async () => {
     calls++;
-    if (calls === 1) throw new Error("network blip");
-    return fakeClouds("Clear");
+    // Origin gets great weather; every candidate gets terrible weather —
+    // nothing in the pool can possibly beat it.
+    return calls === 1
+      ? f.night(f.NEW_MOON_NIGHT, f.CLEAR)
+      : f.night(f.NEW_MOON_NIGHT, f.OVERCAST);
   };
 
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
@@ -208,21 +292,66 @@ test("a candidate whose forecast fetch fails is treated as not-clear, not fatal"
     fetchWeather,
   });
 
-  assert.equal(result.found, true);
-  assert.equal(result.weatherMatched, true, "the 2nd candidate's success should still win");
+  assert.equal(result.found, false);
+  assert.equal(result.dataAvailable, true);
+  assert.equal(result.candidatesChecked, 5);
+  assert.ok(result.originScoreAvailable);
+  assert.match(result.message, /no cell among/i);
+  // The old "fall back to nearest anyway, flagged" fields must be gone.
+  assert.equal(result.weatherMatched, undefined);
+});
+
+test("a candidate whose forecast fetch fails cannot win, but doesn't crash the batch", {
+  skip: !gridExists,
+}, async () => {
+  let calls = 0;
+  const fetchWeather = async () => {
+    calls++;
+    if (calls === 1) return f.night(f.NEW_MOON_NIGHT, f.BROKEN); // origin: mediocre
+    if (calls === 2) throw new Error("network blip"); // 1st candidate: fails
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR); // rest: clearly better
+  };
+
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 5,
+    fetchWeather,
+  });
+
+  assert.equal(result.found, true, "a later, genuinely-scoreable candidate still wins");
+  assert.ok(result.score > result.originScore);
+});
+
+test("origin's own forecast failing falls back to any scoreable candidate, flagged", {
+  skip: !gridExists,
+}, async () => {
+  let calls = 0;
+  const fetchWeather = async () => {
+    calls++;
+    if (calls === 1) throw new Error("origin forecast unavailable");
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR);
+  };
+
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 5,
+    fetchWeather,
+  });
+
+  assert.equal(result.originScoreAvailable, false);
+  assert.equal(result.originScore, null);
+  assert.equal(result.found, true, "any scoreable candidate qualifies when the origin is unknown");
 });
 
 test("outside the atlas extent short-circuits before any forecast fetch", { skip: !gridExists }, async () => {
   let calls = 0;
   const fetchWeather = async () => {
     calls++;
-    return fakeClouds("Clear");
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR);
   };
 
   const result = await findNearestGoodWeatherDarkSite(-89, 0, 21.3, { fetchWeather });
 
   assert.equal(result.dataAvailable, false);
-  assert.equal(calls, 0);
+  assert.equal(calls, 0, "not even the origin's own forecast should be fetched");
 });
 
 test("an unreachable threshold returns found:false without calling the forecast fetcher", {
@@ -231,12 +360,65 @@ test("an unreachable threshold returns found:false without calling the forecast 
   let calls = 0;
   const fetchWeather = async () => {
     calls++;
-    return fakeClouds("Clear");
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR);
   };
 
   // Same impossible-threshold Beijing case as the plain search above.
   const result = await findNearestGoodWeatherDarkSite(39.9, 116.4, 25, { fetchWeather });
 
   assert.equal(result.found, false);
+  assert.equal(result.candidatesChecked, 0);
   assert.equal(calls, 0);
+});
+
+test("PIN: an exact tie in real tonight-score is not an improvement", { skip: !gridExists }, async () => {
+  // Finds the real nearest dark-enough candidate, then fakes the ORIGIN's own
+  // light pollution to that exact sqm and gives both identical weather — the
+  // closest thing to a guaranteed tie the real grid can produce. A `>=`
+  // instead of `>` bug would treat this as an improvement; it must not.
+  const nearest = findNearestDarkSite(41.8827, -87.6233, 21.3);
+  const tiedSqm = nearest.lightPollution.sqm;
+  const lookupOrigin = () => ({ dataAvailable: true, sqm: tiedSqm });
+  const clearNight = f.night(f.NEW_MOON_NIGHT, f.CLEAR);
+  const fetchWeather = async () => clearNight; // origin and the one candidate: identical
+
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 1,
+    fetchWeather,
+    lookupOrigin,
+  });
+
+  assert.equal(result.found, false, `a tied score must not count as an improvement, got score ${result.score}`);
+});
+
+// --- Property: never recommend a worse real score tonight ---------------------
+
+test("PROPERTY: a found result always scores strictly better tonight than the origin", {
+  skip: !gridExists,
+}, async () => {
+  const points = [
+    [41.8827, -87.6233], // Chicago
+    [51.5072, -0.1276], // London
+    [19.076, 72.8777], // Mumbai
+  ];
+  // Deterministic per-call cover: origin gets a middling night; candidates
+  // alternate between worse and clearly-better fixtures, so every point has a
+  // real chance of finding an improvement without being guaranteed one.
+  const covers = [f.BROKEN, f.OVERCAST, f.HALF, f.OVERCAST, f.CLEAR, f.OVERCAST, f.CLEAR, f.HALF, f.CLEAR];
+
+  for (const [lat, lon] of points) {
+    let i = 0;
+    const fetchWeather = async () => f.night(f.NEW_MOON_NIGHT, covers[i++ % covers.length]);
+
+    const result = await findNearestGoodWeatherDarkSite(lat, lon, 21.3, {
+      candidateCount: 8,
+      fetchWeather,
+    });
+
+    if (!result.found) continue;
+    assert.ok(
+      result.score > result.originScore,
+      `at (${lat}, ${lon}): winner's score ${result.score} must beat the origin's ${result.originScore}`
+    );
+  }
 });

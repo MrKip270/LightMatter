@@ -1,23 +1,37 @@
 // LightMatter — nearest dark site search
 //
 // Two searches live here:
-//   findNearestDarkSite         — nearest cell meeting a target SQM. Pure grid
+//   findNearestDarkSite         — nearest cell that is BOTH dark enough (meets
+//                                  minSqm) AND a genuine improvement over the
+//                                  query point's own darkness. Pure grid
 //                                  search, synchronous, no network.
-//   findNearestGoodWeatherDarkSite — same darkness search, but widened to the
-//                                  nearest K qualifying cells, each checked
-//                                  against tonight's forecast so the answer is
-//                                  a site actually worth driving to tonight,
-//                                  not just the nearest dark one under cloud.
+//   findNearestGoodWeatherDarkSite — same darkness-floor candidate pool, but
+//                                  widened to the nearest K qualifying cells,
+//                                  each scored the same way /api/sky scores
+//                                  ANY point (cloud + moon + darkness, no
+//                                  aurora), returning the nearest one that
+//                                  scores strictly better tonight than the
+//                                  query point itself would.
+//
+// Both searches share one invariant: they never recommend somewhere WORSE than
+// where the user already is. Comparing against a fixed threshold alone doesn't
+// guarantee that — a query point that already exceeds the threshold could still
+// get "improved" onto a cell that merely clears the same threshold by less. So
+// both functions look up the query point's own darkness (and, for the weather-
+// aware search, its own real tonight-score) FIRST, and require candidates to
+// beat it, not just clear a floor.
 //
 // Both share searchCandidates() below, which walks the light pollution grid
 // (the same in-memory atlas the point lookup and tile renderer already use —
 // see lightpollutiongrid.js) outward from the query cell in square "rings"
 // (the natural shape for a row/column grid — see ringCells), collecting the
-// nearest cells that meet the darkness threshold.
+// nearest cells that meet the darkness floor (and, optionally, any additional
+// per-cell qualifying predicate).
 
 const { grid, meta, loadError } = require("./lightpollutiongrid");
 const { getLightPollution } = require("./lightpollution");
 const { getClouds } = require("./clouds");
+const { darknessFactor, scoreTonight } = require("./scoring");
 
 const KM_PER_DEGREE = 111; // matches the constant already used for resolutionKm
 const EARTH_RADIUS_KM = 6371;
@@ -99,9 +113,15 @@ function insertSorted(list, item) {
   list[i] = item;
 }
 
-// The shared search: nearest `count` cells meeting minSqm, ascending by
-// distance. Both public functions below are thin formatters over this.
-function searchCandidates(lat, lon, minSqm, count) {
+// The shared search: nearest `count` cells meeting minSqm (and, optionally,
+// `qualifies(sqm)` — an extra per-cell gate), ascending by distance. Both
+// public functions below are thin formatters over this.
+//
+// `qualifies` defaults to "anything that clears the floor qualifies" — the
+// original behaviour, still exactly what findNearestGoodWeatherDarkSite wants
+// for its candidate POOL (unchanged by this fix). findNearestDarkSite passes a
+// stricter predicate: also darker than the query point itself.
+function searchCandidates(lat, lon, minSqm, count, qualifies = () => true) {
   const { row: row0, col: col0 } = rowColFor(lat, lon);
 
   if (col0 < 0 || col0 >= meta.width || row0 < 0 || row0 >= meta.height) {
@@ -136,10 +156,11 @@ function searchCandidates(lat, lon, minSqm, count) {
 
       const sqm = raw / meta.scale;
       if (sqm < minSqm) continue;
+      if (!qualifies(sqm)) continue;
 
       const center = cellCenter(row, col);
       const distanceKm = haversineKm(lat, lon, center.lat, center.lon);
-      const item = { lat: center.lat, lon: center.lon, distanceKm };
+      const item = { lat: center.lat, lon: center.lon, distanceKm, sqm };
 
       if (candidates.length < count) {
         insertSorted(candidates, item);
@@ -153,7 +174,12 @@ function searchCandidates(lat, lon, minSqm, count) {
   return { outsideExtent: false, candidates };
 }
 
-function findNearestDarkSite(lat, lon, minSqm = DEFAULT_MIN_SQM) {
+function findNearestDarkSite(
+  lat,
+  lon,
+  minSqm = DEFAULT_MIN_SQM,
+  { lookupOrigin = getLightPollution } = {}
+) {
   if (loadError) {
     const err = new Error(loadError);
     err.statusCode = 503; // our problem, not the caller's
@@ -161,7 +187,23 @@ function findNearestDarkSite(lat, lon, minSqm = DEFAULT_MIN_SQM) {
   }
 
   const query = { lat, lon };
-  const search = searchCandidates(lat, lon, minSqm, 1);
+
+  // The query point's own darkness is the bar every candidate must clear.
+  // Comparing via darknessFactor (not raw sqm) means two cells that are both
+  // already at the atlas's ~22.0 practical ceiling read as equally dark, so a
+  // hundredth-of-a-magnitude difference at the ceiling never triggers a
+  // pointless "farther but technically darker" relocation.
+  const origin = lookupOrigin(lat, lon);
+  const originSqm = origin?.dataAvailable ? origin.sqm : null;
+  const originDataAvailable = originSqm !== null;
+
+  // No concrete bar to clear — degrade to the floor-only behaviour rather
+  // than refusing to search at all.
+  const qualifies = originDataAvailable
+    ? (sqm) => darknessFactor(sqm) > darknessFactor(originSqm)
+    : () => true;
+
+  const search = searchCandidates(lat, lon, minSqm, 1, qualifies);
 
   if (search.outsideExtent) {
     return {
@@ -179,7 +221,11 @@ function findNearestDarkSite(lat, lon, minSqm = DEFAULT_MIN_SQM) {
       minSqm,
       dataAvailable: true,
       found: false,
-      message: `No cell within ${MAX_SEARCH_RADIUS_KM} km reaches ${minSqm} mag/arcsec².`,
+      originSqm,
+      originDataAvailable,
+      message: originDataAvailable
+        ? `Nothing within ${MAX_SEARCH_RADIUS_KM} km is both above ${minSqm} mag/arcsec² and darker than here.`
+        : `No cell within ${MAX_SEARCH_RADIUS_KM} km reaches ${minSqm} mag/arcsec².`,
     };
   }
 
@@ -188,33 +234,34 @@ function findNearestDarkSite(lat, lon, minSqm = DEFAULT_MIN_SQM) {
     minSqm,
     dataAvailable: true,
     found: true,
+    originSqm,
+    originDataAvailable,
     distanceKm: Number(best.distanceKm.toFixed(1)),
     location: { lat: best.lat, lon: best.lon },
     lightPollution: getLightPollution(best.lat, best.lon),
   };
 }
 
-// Deliberately harsher than "usable" — reuses clouds.js's own verdict, which
-// already promotes a night with a long enough clear run to "Clear" even if
-// the whole-night average looks partly cloudy. A site worth a drive should
-// mean the same thing here as it does on the main report.
-function isGoodWeather(clouds) {
-  return Boolean(clouds && clouds.dataAvailable && clouds.verdict === "Clear");
-}
-
 // Like findNearestDarkSite, but widened to the nearest `candidateCount`
-// qualifying cells and checked against tonight's forecast, returning the
-// NEAREST one that is actually clear — not just dark.
+// dark-enough cells (unchanged pool — see searchCandidates' default
+// `qualifies`), each scored the same way /api/sky scores ANY point (cloud +
+// moon + darkness; aurora deliberately excluded — see scoring.js), returning
+// the NEAREST one that scores strictly better tonight than the query point
+// itself. If nothing in the checked pool beats the query point, this returns
+// found:false rather than recommending the least-bad option anyway.
 //
 // `fetchWeather` defaults to the real getClouds, but is overridable so tests
-// can exercise the selection logic (nearest-clear-wins, degrade-on-failure,
-// fall-back-when-nothing-clears) without a network call, the same seam
-// sky.js uses (buildReport takes already-fetched source data).
+// can exercise the selection logic without a network call — the same seam
+// scoring.js's buildReport uses (take already-fetched source data).
 async function findNearestGoodWeatherDarkSite(
   lat,
   lon,
   minSqm = DEFAULT_MIN_SQM,
-  { candidateCount = DEFAULT_WEATHER_CANDIDATES, fetchWeather = getClouds } = {}
+  {
+    candidateCount = DEFAULT_WEATHER_CANDIDATES,
+    fetchWeather = getClouds,
+    lookupOrigin = getLightPollution,
+  } = {}
 ) {
   if (loadError) {
     const err = new Error(loadError);
@@ -240,26 +287,56 @@ async function findNearestGoodWeatherDarkSite(
       minSqm,
       dataAvailable: true,
       found: false,
+      candidatesChecked: 0,
       message: `No cell within ${MAX_SEARCH_RADIUS_KM} km reaches ${minSqm} mag/arcsec².`,
     };
   }
 
-  // allSettled, not all — one candidate's dead forecast must not sink the
-  // others; it just gets treated as not-clear (see isGoodWeather).
-  const forecasts = await Promise.allSettled(
-    search.candidates.map((c) => fetchWeather(c.lat, c.lon))
-  );
+  // The origin's own forecast rides in the SAME allSettled batch as every
+  // candidate's — one round of parallelism, not an extra round trip first.
+  const settled = await Promise.allSettled([
+    fetchWeather(lat, lon),
+    ...search.candidates.map((c) => fetchWeather(c.lat, c.lon)),
+  ]);
+  const [originSettled, ...candidateSettled] = settled;
 
+  const originClouds = originSettled.status === "fulfilled" ? originSettled.value : null;
+  const originLightPollution = lookupOrigin(lat, lon);
+  const originScore = scoreTonight(originClouds, originLightPollution, lat, lon);
+  const originScoreAvailable = originScore !== null;
+
+  // allSettled, not all — one candidate's dead forecast must not sink the
+  // others. A candidate whose forecast failed scores null (cloudFactor(null)
+  // is null, so scoreTonight is null too) and therefore simply cannot win.
   const evaluated = search.candidates.map((candidate, i) => {
-    const settled = forecasts[i];
-    const clouds = settled.status === "fulfilled" ? settled.value : null;
-    return { candidate, clouds, weatherGood: isGoodWeather(clouds) };
+    const settledForecast = candidateSettled[i];
+    const clouds = settledForecast.status === "fulfilled" ? settledForecast.value : null;
+    const score = scoreTonight(clouds, { dataAvailable: true, sqm: candidate.sqm }, candidate.lat, candidate.lon);
+    return { candidate, clouds, score };
   });
 
-  // Candidates are already nearest-first, so the first good-weather match
-  // in iteration order IS the nearest clear site — no re-sorting needed.
-  const match = evaluated.find((c) => c.weatherGood) ?? evaluated[0];
-  const weatherMatched = match.weatherGood;
+  // Candidates are already nearest-first, so the first strict improvement in
+  // iteration order IS the nearest one that beats tonight's own sky. When the
+  // origin's own score couldn't be computed, there is nothing concrete to
+  // beat, so any candidate with a real score qualifies — the same "degrade to
+  // floor-only" posture findNearestDarkSite takes for the same reason.
+  const match = evaluated.find(
+    (c) => c.score !== null && (originScore === null || c.score > originScore)
+  );
+
+  if (!match) {
+    return {
+      query,
+      minSqm,
+      dataAvailable: true,
+      found: false,
+      candidatesChecked: evaluated.length,
+      originScore,
+      originScoreAvailable,
+      message: `No cell among the ${evaluated.length} nearest dark-enough sites scores better than here tonight.`,
+    };
+  }
+
   const location = { lat: match.candidate.lat, lon: match.candidate.lon };
 
   return {
@@ -267,15 +344,14 @@ async function findNearestGoodWeatherDarkSite(
     minSqm,
     dataAvailable: true,
     found: true,
-    weatherMatched,
     candidatesChecked: evaluated.length,
     distanceKm: Number(match.candidate.distanceKm.toFixed(1)),
     location,
+    score: match.score,
+    originScore,
+    originScoreAvailable,
     lightPollution: getLightPollution(location.lat, location.lon),
     weather: match.clouds ?? { dataAvailable: false, error: "Forecast unavailable for this site." },
-    message: weatherMatched
-      ? undefined
-      : `No clear weather among the ${evaluated.length} nearest dark-enough sites tonight; showing the closest anyway.`,
   };
 }
 
@@ -291,6 +367,5 @@ module.exports = {
     rowColFor,
     kmPerRingStep,
     ringCells,
-    isGoodWeather,
   },
 };
