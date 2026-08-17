@@ -252,7 +252,7 @@ function timelineChartMarkup(d) {
     .map(
       (t) =>
         `<path class="chart-moon" transform="translate(${t.x.toFixed(2)},${(chart.axisTop - 3).toFixed(2)})"
-               d="${t.kind === "rise" ? "M-4,0 L4,0 L0,-6 Z" : "M-4,-6 L4,-6 L0,0 Z"}">
+               d="${t.kind === "rise" ? "M-7,0 L7,0 L0,-11 Z" : "M-7,-11 L7,-11 L0,0 Z"}">
            <title>Moon${t.kind === "rise" ? "rise" : "set"}</title>
          </path>`
     )
@@ -379,6 +379,8 @@ function infoBody(state) {
         : `<p class="window mono dim">No usable window tonight</p>`
     }
 
+    ${timelineChartMarkup(d)}
+
     <ul class="targets">
       ${d.targets
         .map(
@@ -396,8 +398,6 @@ function infoBody(state) {
       ${d.sky.moonPenaltyMagnitudes >= 0.3 ? row("Moon cost", `−${d.sky.moonPenaltyMagnitudes} mag`) : ""}
       ${eclipse ? row("Lunar eclipse", eclipse) : ""}
     </div>
-
-    ${timelineChartMarkup(d)}
 
     <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
 }

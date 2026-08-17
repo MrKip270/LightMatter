@@ -376,7 +376,7 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 .chart-axis-label {
   fill: var(--text-faint);
   font-family: var(--data);
-  font-size: 9px;
+  font-size: 14px;
 }
 
 .chart-crosshair { stroke: var(--rose); stroke-width: 1; }
@@ -395,7 +395,7 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   pointer-events: none;
 }
 
-.chart-caption { font-size: 11px; line-height: 1.5; margin: 0.5rem 0 0; }
+.chart-caption { font-size: 13px; line-height: 1.5; margin: 0.5rem 0 0; }
 
 .chart-table-toggle { margin-top: 0.5rem; font-size: 12px; }
 .chart-table-toggle summary { color: var(--rose); cursor: pointer; }

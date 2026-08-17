@@ -17,7 +17,7 @@ const PAD_X = 4;
 const CLOUD_HEIGHT = 56;
 const SQM_HEIGHT = 56;
 const PANEL_GAP = 16;
-const AXIS_HEIGHT = 22;
+const AXIS_HEIGHT = 26;
 const VIEW_HEIGHT = CLOUD_HEIGHT + PANEL_GAP + SQM_HEIGHT + AXIS_HEIGHT;
 
 // Matches the light-pollution legend's palette domain (lightpollutiontiles.js
