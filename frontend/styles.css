@@ -60,8 +60,6 @@
 
   --blur: saturate(130%) blur(14px);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
-  --shadow-drop: rgba(0, 0, 0, 0.65);
-  --shadow-float: rgba(0, 0, 0, 0.5);
 
   color-scheme: dark;
 }
@@ -142,7 +140,7 @@ html, body {
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--orchid);
+  color: var(--rose);
   margin: 0 0 0.5rem;
 }
 
@@ -250,7 +248,7 @@ button { cursor: pointer; }
 .scorebox .k,
 .window-card .k {
   font-family: var(--data);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -300,7 +298,7 @@ button { cursor: pointer; }
 }
 .targets .v {
   font-family: var(--data);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -437,7 +435,7 @@ button { cursor: pointer; }
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  color: var(--orchid);
+  color: var(--rose);
 }
 .rail-tab::before {
   content: "";
@@ -449,7 +447,7 @@ button { cursor: pointer; }
 }
 .rail-tab-text {
   font-family: var(--data);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   writing-mode: vertical-rl;
@@ -458,10 +456,10 @@ button { cursor: pointer; }
 
 .rail-title {
   font-family: var(--data);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--orchid);
+  color: var(--rose);
   margin: 0 0 0.6rem;
 }
 .layer {
@@ -475,10 +473,10 @@ button { cursor: pointer; }
 .layer em {
   font-family: var(--data);
   font-style: normal;
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--wine);
+  color: var(--text-dim);
 }
 /* Colour key. Built from the server's palette so it cannot drift from the
    tiles it describes. */
@@ -488,7 +486,7 @@ button { cursor: pointer; }
   flex-wrap: wrap;
   gap: 0.15rem 0.5rem;
   font-family: var(--data);
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--text-faint);
 }
 .swatch { display: flex; align-items: center; gap: 0.22rem; }
@@ -500,14 +498,14 @@ button { cursor: pointer; }
   display: inline-block;
 }
 .legend-note {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--text-faint);
   margin: 0.4rem 0 0;
 }
 
 .rail-note {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text-faint);
   margin: 0.9rem 0 0;
@@ -523,7 +521,7 @@ button { cursor: pointer; }
   gap: 0.5rem;
   margin-top: 0.5rem;
   font-family: var(--data);
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -562,7 +560,6 @@ button { cursor: pointer; }
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   backdrop-filter: var(--blur);
   border: 1px solid var(--edge-lit);
-  box-shadow: 0 14px 44px var(--shadow-drop);
   transition: border-color 200ms var(--ease);
 }
 .search:focus-within { border-color: var(--brick); }
@@ -651,7 +648,6 @@ button { cursor: pointer; }
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-dim);
-  box-shadow: 0 -10px 34px var(--shadow-float);
 }
 .toast[hidden] { display: none; }
 
@@ -669,7 +665,6 @@ button { cursor: pointer; }
   max-height: 15rem;
   overflow-y: auto;
   border-color: var(--edge-lit);
-  box-shadow: 0 -10px 34px var(--shadow-drop);
 }
 .suggestions[hidden] { display: none; }
 .suggestions li {
@@ -708,7 +703,7 @@ button { cursor: pointer; }
 
 .primary {
   background: var(--brick);
-  color: var(--oxblood);
+  color: var(--peak);
   border: none;
   border-radius: 999px;
   padding: 0.75rem 1.5rem;
