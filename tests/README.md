@@ -1,6 +1,6 @@
 # Tests
 
-81 tests, no dependencies — Node's built-in runner (`node --test`).
+171 tests, no dependencies — Node's built-in runner (`node --test`).
 
 ## Running them
 
@@ -42,6 +42,7 @@ intended workflow.
 | `lightpollution.test.js` | Limiting magnitude, star counts, grid lookup |
 | `sky.test.js` | Scoring, both score types, target verdicts, best window, degradation |
 | `lightpollutiontiles.test.js` | Slippy-map projection, palette, PNG rendering, tile route |
+| `auroratiles.test.js` | Alpha palette, live-grid cache/staleness fallback, tile route |
 | `reversegeocode.test.js` | Label building, User-Agent policy, throttling, caching |
 | `coords.test.js` | Longitude wrapping, latitude clamping, typed-coordinate parsing |
 | `format.test.js` | Score bands, hour formatting, cloud and eclipse strings |

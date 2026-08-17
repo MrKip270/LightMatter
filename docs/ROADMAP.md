@@ -129,12 +129,18 @@ PNG tiles. The `L.imageOverlay` alternative was rejected on inspection: the grid
 is EPSG:4326 and Leaflet is EPSG:3857, so a linear corner-to-corner overlay
 would misplace high latitudes by hundreds of kilometres.
 
-**15c. Aurora overlay on the map.** Not built. The cheapest remaining map layer:
-NOAA's OVATION product is already a global grid, and
-`backend/sources/lightpollutiontiles.js` is a working tile renderer that could
-be pointed at it with modest changes. Unlike light pollution it is *live* — the
-grid refreshes every few minutes — so it needs a short cache lifetime and a
-"forecast time" label rather than the immutable caching the static atlas gets.
+**15c. ~~Aurora overlay on the map.~~ DONE.** `backend/sources/auroratiles.js`
+fetches NOAA's OVATION grid (a full 360x181, 1°-per-cell global grid — no
+missing-coverage band to handle, unlike the light-pollution atlas) into an
+in-memory cache with a 5-minute TTL shared across all tile requests, rather
+than the point endpoint's one-fetch-per-request. Probability drives per-pixel
+*alpha* rather than a fixed colour blended by layer opacity, so 0% is
+genuinely invisible instead of a faint wash implying "checked, nothing here."
+`maxNativeZoom` is capped at 4 (vs. light pollution's 8) since the grid is
+~16x coarser. Frontend: an independent toggle + opacity slider in the layers
+rail, own colour-key legend, and a "Forecast for HH:MM your time" label read
+from NOAA's own forecast timestamp — fetched once at page load, not polled,
+consistent with the rest of the site.
 
 **15d. Cloud cover — a summary datapoint, not a map layer.** The original UI
 concept called for a cloud overlay; dropped. Open-Meteo is a point query, so
@@ -192,7 +198,7 @@ social features.
 2. ~~Light pollution overlay~~ — done
 3. ~~Twilight handling~~ (4.17) — done
 4. ~~Find nearest dark site~~ (4.15) — done
-5. Aurora overlay (4.15c) — cheapest remaining map layer, renderer already exists
+5. ~~Aurora overlay~~ (4.15c) — done
 6. Severe weather (2.4) — completes a PRD story, no key needed
 7. Hourly chart (4.16) — data already exists, pure frontend
 8. Planets via ephemeris (2.6) — biggest single upgrade to the report

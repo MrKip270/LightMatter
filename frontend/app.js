@@ -22,6 +22,15 @@ let lightOn = true;
 let lightOpacity = 0.35;
 let legendStops = null;
 
+let auroraLayer = null;
+// Off by default: unlike light pollution, aurora probability is near-zero
+// almost everywhere almost all the time, so defaulting it on would show most
+// visitors a mostly-empty layer before they've asked for it.
+let auroraOn = false;
+let auroraOpacity = 0.85;
+let auroraLegendStops = null;
+let auroraForecastTime = null;
+
 let report = null; // latest /api/sky result
 let searchText = "";
 let railOpen = false;
@@ -119,10 +128,16 @@ function render(state = {}) {
                value="${Math.round(lightOpacity * 100)}" />
       </div>
       ${legendMarkup()}
-      <label class="layer off">
-        <input type="checkbox" disabled />
-        <span>Aurora <em>coming soon</em></span>
+      <label class="layer">
+        <input type="checkbox" id="aurora-toggle" ${auroraOn ? "checked" : ""} />
+        <span>Aurora</span>
       </label>
+      <div class="opacity-row">
+        <label for="aurora-opacity">Opacity</label>
+        <input type="range" id="aurora-opacity" min="0" max="100"
+               value="${Math.round(auroraOpacity * 100)}" />
+      </div>
+      ${auroraLegendMarkup()}
       <p class="rail-note">
         Cloud cover and eclipses appear in the location summary — they read
         better as numbers than as paint spread over a continent.
@@ -169,6 +184,37 @@ function legendMarkup() {
   return `<div class="legend">
             <div class="swatches">${swatches}</div>
             <p class="legend-note">Sky brightness, mag/arcsec² — higher is darker.</p>
+          </div>`;
+}
+
+// Same drift-proof idea as legendMarkup(), against the aurora tile palette.
+// Swatches use the actual rgba() the tiles draw, so a near-0% stop reads as
+// the faint chip it really is rather than a fabricated "off" colour.
+function auroraLegendMarkup() {
+  if (!auroraLegendStops) return "";
+  const swatches = auroraLegendStops
+    .map(
+      (stop) =>
+        `<span class="swatch"><span class="chip" style="background:${esc(stop.colour)}"></span>${stop.probability}%</span>`
+    )
+    .join("");
+  // Unlike Open-Meteo's naive local-time strings (see clouds handling),
+  // NOAA's forecastTime is a genuine UTC instant ("...Z"), so new Date() is
+  // the CORRECT way to read it — it converts to whatever timezone the
+  // visitor's browser is already in, which is what "Forecast for X" should
+  // mean to them.
+  const asOf = auroraForecastTime
+    ? `<p class="legend-note">Forecast for ${esc(
+        new Date(auroraForecastTime).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      )} your time.</p>`
+    : "";
+  return `<div class="legend">
+            <div class="swatches">${swatches}</div>
+            <p class="legend-note">Aurora visibility probability. Live — updates every few minutes.</p>
+            ${asOf}
           </div>`;
 }
 
@@ -425,6 +471,17 @@ function wire(state) {
   ui.querySelector("#lp-opacity").addEventListener("input", (event) => {
     lightOpacity = Number(event.target.value) / 100;
     if (lightLayer) lightLayer.setOpacity(lightOpacity);
+  });
+
+  ui.querySelector("#aurora-toggle").addEventListener("change", (event) => {
+    auroraOn = event.target.checked;
+    if (!map || !auroraLayer) return;
+    auroraOn ? auroraLayer.addTo(map) : map.removeLayer(auroraLayer);
+  });
+
+  ui.querySelector("#aurora-opacity").addEventListener("input", (event) => {
+    auroraOpacity = Number(event.target.value) / 100;
+    if (auroraLayer) auroraLayer.setOpacity(auroraOpacity);
   });
 
   ui.querySelector(".menu").addEventListener("click", () => {
@@ -735,6 +792,18 @@ function initMap() {
   });
   if (lightOn) lightLayer.addTo(map);
 
+  // Added after lightLayer so it draws above it — a live aurora glow over a
+  // static light-pollution wash reads more sensibly than the reverse.
+  auroraLayer = L.tileLayer("/api/aurora/tile/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    // Coarser grid than light pollution (~111 km vs ~7 km cells), so native
+    // detail runs out much sooner — see auroratiles.js for the derivation.
+    maxNativeZoom: 4,
+    opacity: auroraOpacity,
+    attribution: "Aurora: NOAA SWPC OVATION",
+  });
+  if (auroraOn) auroraLayer.addTo(map);
+
   map.createPane("labels");
   map.getPane("labels").style.zIndex = 650;
   map.getPane("labels").style.pointerEvents = "none";
@@ -758,6 +827,20 @@ async function loadLegend() {
   try {
     const data = await getJson("/api/lightpollution/tile/legend");
     legendStops = data.stops;
+    render({});
+  } catch {
+    // The map works fine without a colour key.
+  }
+}
+
+// Fetched once at page load, not polled — matches the rest of the site
+// having no background refresh anywhere. A long session's timestamp will
+// drift from reality, which is an accepted tradeoff, not an oversight.
+async function loadAuroraLegend() {
+  try {
+    const data = await getJson("/api/aurora/tile/legend");
+    auroraLegendStops = data.stops;
+    auroraForecastTime = data.forecastTime;
     render({});
   } catch {
     // The map works fine without a colour key.
@@ -843,6 +926,7 @@ try {
   if (typeof L === "undefined") throw new Error("Leaflet did not load");
   initMap();
   loadLegend();
+  loadAuroraLegend();
 } catch (err) {
   console.error(err);
   notice("The map couldn’t load, but search still works.", 0);

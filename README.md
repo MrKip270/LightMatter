@@ -21,7 +21,11 @@ Early development, built step by step as a learning project. Working today:
   slider and a colour key. The location summary slides in from the left and
   includes a close button; the **best window** tonight is featured as a card
   with its start/end times.
-- **Aurora** — live aurora probability for any location, from NOAA SWPC.
+- **Aurora** — live aurora probability for any location, from NOAA SWPC, plus
+  a map overlay of the same NOAA OVATION grid. Independent toggle + opacity
+  slider in the layers rail, own colour key, and a forecast timestamp read
+  from NOAA's own data — refetched every 5 minutes server-side, not polled by
+  the browser.
 - **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
   the hours of **astronomical darkness** (sun ≥18° below the horizon), with
   graceful fallback to sunset/sunrise at high latitudes. Reduced to a
@@ -92,6 +96,7 @@ LightMatter/
 │   ├── server.js            # Express entry point; mounts routes, serves frontend
 │   ├── sources/             # DATA LOGIC — no Express, no req/res
 │   │   ├── aurora.js        #   getAurora(lat, lon)
+│   │   ├── auroratiles.js   #   renders PNG map tiles from NOAA's OVATION grid
 │   │   ├── clouds.js        #   getClouds(lat, lon)
 │   │   ├── darksite.js      #   findNearestDarkSite / findNearestGoodWeatherDarkSite
 │   │   ├── lightpollutiongrid.js # loads the grid once, shared by both below
@@ -160,6 +165,12 @@ Then open **http://localhost:3000** in your browser.
   `label: null` rather than an error, because the sky report only needs
   coordinates and shouldn't break over a cosmetic lookup.
 - `GET /api/aurora?lat=<lat>&lon=<lon>` — returns aurora probability for a point.
+- `GET /api/aurora/tile/:z/:x/:y.png` — a 256×256 map tile of the NOAA OVATION
+  aurora grid, same slippy-map scheme as the light pollution tiles. Native
+  resolution stops at zoom 4 (the grid is ~111 km per cell); short-lived cache
+  (5 min) since, unlike light pollution, this data is genuinely live.
+- `GET /api/aurora/tile/legend` — palette stops plus NOAA's own forecast/
+  observation timestamps, generated from the same table the tiles use.
 - `GET /api/clouds?lat=<lat>&lon=<lon>` — returns tonight's cloud cover for a
   point: verdict, average cover, clearest hour, longest clear stretch, and the
   hour-by-hour detail. Responds `200` with `dataAvailable: false` when the
@@ -260,14 +271,15 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. ~~**A real test suite**~~ — done. 158 tests, no network, ~2s.
+1. ~~**A real test suite**~~ — done. 171 tests, no network, ~2s.
 2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
    (sun 18° below horizon) rather than sunset/sunrise.
 3. ~~**Nearest dark site**~~ — done. Walks the light pollution grid outward from
    the requested point; two searches (dark-enough regardless of forecast, or
    dark-enough and clear tonight), surfaced as a "Find a darker sky" popup.
-4. **Aurora overlay** — render the NOAA probability grid as a map layer, the
-   same way light pollution is rendered.
+4. ~~**Aurora overlay**~~ — done. NOAA's OVATION grid rendered as map tiles the
+   same way light pollution is, with its own toggle, opacity slider, legend,
+   and forecast timestamp.
 5. **Hourly timeline chart** — `/api/sky` already returns per-hour cloud cover,
    moon altitude, and effective SQM in its `timeline` field; nothing renders it
    yet.

@@ -9,6 +9,7 @@ const path = require("path");
 // 3. Bring in our route modules (each data source / helper is its own file).
 const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
+const auroraTilesRoute = require("./routes/auroratiles");
 const cloudsRoute = require("./routes/clouds");
 const darkSiteRoute = require("./routes/darksite");
 const lightPollutionRoute = require("./routes/lightpollution");
@@ -33,6 +34,10 @@ const PORT = process.env.PORT || 3000;
 //    Future sources (satellites, sky events) line up here the same way.
 app.use("/api/geocode", geocodeRoute);
 app.use("/api/reverse-geocode", reverseGeocodeRoute);
+// Mounted BEFORE /api/aurora for the same reason as the light-pollution
+// tiles below: the more specific /tile path must match first, or the point
+// route would try to parse "tile" as part of a coordinate query.
+app.use("/api/aurora/tile", auroraTilesRoute);
 app.use("/api/aurora", auroraRoute);
 app.use("/api/clouds", cloudsRoute);
 // Mounted BEFORE /api/lightpollution so the more specific tile paths match
