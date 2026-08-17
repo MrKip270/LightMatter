@@ -28,6 +28,10 @@ let railOpen = false;
 let infoOpen = false;
 let lastPoint = null;
 
+let darkSitePopupOpen = false; // is the inline "find a darker sky" popup expanded
+let darkSiteSearch = null; // null when idle; { mode: "tonight" | "nearby" } while a search is in flight
+let darkSiteRequestId = 0; // bumped on every select() and every dark-site search — stale-result guard
+
 // --- helpers ----------------------------------------------------------------
 
 // Place names come from external APIs and from what the user typed, so they are
@@ -195,6 +199,8 @@ function infoBody(state) {
     <p class="eyebrow">${esc(d.potentialLabel || "")}</p>
     <h2 class="display info-title">${esc(d.label)}</h2>
 
+    ${d.darkSite ? darkSiteDisclaimer(d.darkSite) : ""}
+
     <div class="scoreline">
       <div class="scorebox">
         <div class="n" data-band="${scoreBand(d.score)}">${d.score ?? "—"}</div>
@@ -205,6 +211,8 @@ function infoBody(state) {
         <div class="k">At its best</div>
       </div>
     </div>
+
+    ${darkSiteButtonMarkup()}
 
     <p class="headline">${esc(d.headline)}</p>
 
@@ -236,16 +244,74 @@ function infoBody(state) {
       ${eclipse ? row("Lunar eclipse", eclipse) : ""}
     </div>
 
-    <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>
-
-    ${["poor", "bad"].includes(scoreBand(d.score))
-      ? `<p class="window nudge">Poor skies tonight —
-           <button class="nudge-cta" type="button">try a nearby location</button></p>`
-      : ""}`;
+    <p class="attrib">${esc(d.sources?.lightPollution?.attribution || "")}</p>`;
 }
 
 const row = (key, value) =>
   `<div class="r"><span class="rk">${esc(key)}</span><span class="rv">${esc(value)}</span></div>`;
+
+// The button lives directly below the current location's scores, and its
+// inline popup (not a floating overlay — nothing here anchors a popup to an
+// arbitrary button inside a scrolling panel) offers the two search modes.
+function darkSiteButtonMarkup() {
+  return `
+    <button type="button" class="darksite-toggle"
+            aria-expanded="${darkSitePopupOpen}" aria-controls="darksite-popup">
+      Find a darker sky
+    </button>
+    <div class="darksite-popup" id="darksite-popup" ${darkSitePopupOpen ? "" : "hidden"}>
+      ${
+        darkSiteSearch
+          ? `<p class="darksite-status mono dim">
+               ${
+                 darkSiteSearch.mode === "tonight"
+                   ? "Checking tonight's forecast at nearby dark sites…"
+                   : "Searching for the nearest dark-enough site…"
+               }
+             </p>`
+          : `<p class="darksite-lede dim">Search nearby for a darker sky.</p>
+             <div class="darksite-options">
+               <button type="button" class="darksite-option darksite-tonight">Best site tonight</button>
+               <button type="button" class="darksite-option darksite-nearby">Best nearby site</button>
+             </div>`
+      }
+    </div>`;
+}
+
+// Threshold below which "X km away" reads as noise rather than information —
+// the grid's own cell resolution is ~7km, so anything under this is
+// effectively "you were already there".
+const DARKSITE_NEAR_ZERO_KM = 5;
+
+// Rendered on the SUGGESTED site's own summary, explaining why it's here and
+// where it came from. Reuses the backend's own fallback message verbatim for
+// the unmatched-weather case — same "name the actual limiting factor" ethos
+// as buildHeadline() in sky.js, rather than glossing over a fallback as if it
+// were a real match.
+function darkSiteDisclaimer(ds) {
+  const originLabel = esc(ds.origin.label);
+  const km = ds.distanceKm;
+
+  let body;
+  if (km < DARKSITE_NEAR_ZERO_KM) {
+    body = `You were already close to a qualifying dark site — this spot is only ${km} km from ${originLabel}.`;
+  } else if (ds.mode === "tonight" && ds.weatherMatched === false) {
+    body =
+      `${esc(ds.weatherMessage || "No clear weather among the nearest dark-enough sites tonight")} — ` +
+      `this is the closest one anyway, ${km} km from ${originLabel}. Expect ${esc(formatCloud(ds.weather))}.`;
+  } else if (ds.mode === "tonight") {
+    body = `The nearest site with clear, dark skies tonight — ${km} km from ${originLabel}.`;
+  } else {
+    body =
+      `The nearest site dark enough to qualify — ${km} km from ${originLabel}. ` +
+      `This search only checked darkness, not tonight's weather — see cloud cover below.`;
+  }
+
+  return `<div class="darksite-disclaimer">
+    <p>${body}</p>
+    <button type="button" class="darksite-back">← Back to ${originLabel}</button>
+  </div>`;
+}
 
 // --- wiring -----------------------------------------------------------------
 
@@ -377,8 +443,27 @@ function wire(state) {
 
   ui.querySelector("#locate").addEventListener("click", useMyLocation);
 
-  const nudge = ui.querySelector(".nudge-cta");
-  if (nudge) nudge.addEventListener("click", () => ui.querySelector("#q")?.focus());
+  const dsToggle = ui.querySelector(".darksite-toggle");
+  if (dsToggle) {
+    dsToggle.addEventListener("click", () => {
+      darkSitePopupOpen = !darkSitePopupOpen;
+      render({});
+    });
+  }
+
+  const dsTonight = ui.querySelector(".darksite-tonight");
+  if (dsTonight) dsTonight.addEventListener("click", () => runDarkSiteSearch("tonight"));
+
+  const dsNearby = ui.querySelector(".darksite-nearby");
+  if (dsNearby) dsNearby.addEventListener("click", () => runDarkSiteSearch("nearby"));
+
+  const dsBack = ui.querySelector(".darksite-back");
+  if (dsBack) {
+    dsBack.addEventListener("click", () => {
+      const origin = report?.darkSite?.origin;
+      if (origin) select(origin.lat, origin.lon, origin.label);
+    });
+  }
 
   if (state && state.keepFocus) {
     input.focus();
@@ -522,12 +607,19 @@ function recentre() {
 
 // --- selecting a location ----------------------------------------------------
 
-async function select(lat, lon, label) {
+async function select(lat, lon, label, options = {}) {
   infoOpen = true;
   report = null;
   lastPoint = { lat, lon };
   searchText = label;
   syncUrl(lat, lon);
+
+  // Every navigation — search, map click, a dark-site pick, or a second
+  // dark-site search superseding a first — invalidates whatever dark-site
+  // search might still be in flight, and starts the popup fresh.
+  darkSiteRequestId++;
+  darkSitePopupOpen = false;
+  darkSiteSearch = null;
 
   render({ loading: true, label });
 
@@ -549,7 +641,7 @@ async function select(lat, lon, label) {
 
   try {
     const sky = await getJson(`/api/sky?lat=${lat}&lon=${lon}`);
-    report = { ...sky, label };
+    report = { ...sky, label, darkSite: options.darkSite ?? null };
     render({});
 
     // The place name arrives late and never blocks the report.
@@ -564,6 +656,56 @@ async function select(lat, lon, label) {
       .catch(() => {});
   } catch (err) {
     render({ error: err.message });
+  }
+}
+
+// Widens the dark-site search to the nearest few qualifying sites and (for
+// "tonight") checks each against the forecast — see backend/sources/darksite.js.
+// mode: "tonight" checks the weather too; "nearby" is potential-only, ignoring
+// tonight's forecast entirely.
+async function runDarkSiteSearch(mode) {
+  if (darkSiteSearch || !lastPoint) return; // already searching, or nowhere to search from
+
+  const origin = { lat: lastPoint.lat, lon: lastPoint.lon, label: report?.label ?? searchText };
+  const requestId = ++darkSiteRequestId;
+  darkSiteSearch = { mode };
+  render({});
+
+  const path = mode === "tonight" ? "/api/darksite/tonight" : "/api/darksite";
+
+  try {
+    const data = await getJson(`${path}?lat=${origin.lat}&lon=${origin.lon}`);
+    if (requestId !== darkSiteRequestId) return; // superseded by a newer search or a navigation — drop silently
+
+    if (!data.dataAvailable || !data.found) {
+      // Leave darkSitePopupOpen as-is: the popup reopens to the two choices
+      // rather than collapsing, so a retry with the other mode is one click.
+      darkSiteSearch = null;
+      toast(data.message || "Couldn't find a dark site near here.");
+      render({});
+      return;
+    }
+
+    select(
+      data.location.lat,
+      data.location.lon,
+      `(${data.location.lat.toFixed(3)}, ${data.location.lon.toFixed(3)})`,
+      {
+        darkSite: {
+          origin,
+          mode,
+          distanceKm: data.distanceKm,
+          weatherMatched: mode === "tonight" ? data.weatherMatched : undefined,
+          weatherMessage: mode === "tonight" ? data.message : undefined,
+          weather: mode === "tonight" ? data.weather : undefined,
+        },
+      }
+    );
+  } catch (err) {
+    if (requestId !== darkSiteRequestId) return;
+    darkSiteSearch = null;
+    toast(err.message || "Couldn't reach the dark-site search.");
+    render({});
   }
 }
 
@@ -670,6 +812,13 @@ entry.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !entry.hidden) hideEntry();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && darkSitePopupOpen) {
+    darkSitePopupOpen = false;
+    render({});
+  }
 });
 
 // --- boot -------------------------------------------------------------------
