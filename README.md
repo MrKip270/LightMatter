@@ -41,6 +41,14 @@ Early development, built step by step as a learning project. Working today:
   tonight (the longest stretch that's both clear and moon-free), and a per-target
   ladder (bright planets / constellations / Milky Way / faint objects / aurora)
   each marked Likely, Possible, Not visible, or Unknown.
+- **Nearest dark site** — a "Find a darker sky" search below the location
+  summary offers two searches: the nearest site that's dark enough *and* clear
+  tonight, or the nearest site dark enough regardless of forecast. Picking one
+  navigates to that site's own full report, with a disclaimer explaining where
+  it came from and a one-hop back link. Walks the light pollution grid outward
+  from the requested point; the grid is already in memory, so no extra network
+  call for the plain search, and the forecast-checked search fans out to
+  Open-Meteo for the nearest few candidates.
 
 The two scores answer different questions:
 
@@ -85,16 +93,19 @@ LightMatter/
 │   ├── sources/             # DATA LOGIC — no Express, no req/res
 │   │   ├── aurora.js        #   getAurora(lat, lon)
 │   │   ├── clouds.js        #   getClouds(lat, lon)
+│   │   ├── darksite.js      #   findNearestDarkSite / findNearestGoodWeatherDarkSite
 │   │   ├── lightpollutiongrid.js # loads the grid once, shared by both below
 │   │   ├── lightpollution.js#   getLightPollution(lat, lon) — point lookup
 │   │   ├── lightpollutiontiles.js # renders PNG map tiles from the grid
 │   │   ├── moon.js          #   getMoon(lat, lon, date) — local, no network
-│   │   └── reversegeocode.js#   reverseGeocode(lat, lon) — Nominatim proxy
+│   │   ├── reversegeocode.js#   reverseGeocode(lat, lon) — Nominatim proxy
+│   │   └── scoring.js       #   shared scoring helpers used by sky.js and darksite.js
 │   ├── routes/              # HTTP WRAPPERS — validate, call a source, set status
 │   │   ├── validate.js      #   shared lat/lon validation
 │   │   ├── geocode.js
 │   │   ├── aurora.js
 │   │   ├── clouds.js
+│   │   ├── darksite.js
 │   │   ├── lightpollution.js
 │   │   ├── moon.js
 │   │   ├── reversegeocode.js
@@ -168,6 +179,13 @@ Then open **http://localhost:3000** in your browser.
   sky description, and naked-eye limiting magnitude. Responds `503` if the grid
   hasn't been built yet, `200` with `dataAvailable: false` outside the atlas
   extent (85°N–60°S).
+- `GET /api/darksite?lat=<lat>&lon=<lon>[&minSqm=<sqm>]` — nearest grid cell at
+  or above `minSqm` (default in `sources/darksite.js`), found by walking the
+  light pollution grid outward from the point. No extra network call — the
+  grid is already in memory.
+- `GET /api/darksite/tonight?lat=<lat>&lon=<lon>[&minSqm=<sqm>]` — same search,
+  widened to the nearest few qualifying sites, each checked against tonight's
+  forecast; returns the closest one that's also clear.
 
 Above the Arctic and Antarctic circles the sun may not rise or set at all, in
 which case `/api/clouds` falls back to the whole local day and flags
@@ -242,12 +260,12 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. ~~**A real test suite**~~ — done. 133 tests, no network, ~1.6s.
+1. ~~**A real test suite**~~ — done. 158 tests, no network, ~2s.
 2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
    (sun 18° below horizon) rather than sunset/sunrise.
-3. **Nearest dark site** — walk the light pollution grid outward from the
-   requested point to find the closest location above a target SQM. Grid is
-   already in memory; this is a search algorithm plus UI.
+3. ~~**Nearest dark site**~~ — done. Walks the light pollution grid outward from
+   the requested point; two searches (dark-enough regardless of forecast, or
+   dark-enough and clear tonight), surfaced as a "Find a darker sky" popup.
 4. **Aurora overlay** — render the NOAA probability grid as a map layer, the
    same way light pollution is rendered.
 5. **Hourly timeline chart** — `/api/sky` already returns per-hour cloud cover,

@@ -1,6 +1,6 @@
 # LightMatter — Roadmap
 
-Last updated: 2026-08-05
+Last updated: 2026-08-16
 
 What's built, what's left, and what's optional. See [`PRD.md`](PRD.md) for the
 product spec and the reasoning behind decisions already made.
@@ -21,7 +21,9 @@ product spec and the reasoning behind decisions already made.
 | Map picker | — | Leaflet + OSM, lazy-loaded, click to choose a location |
 | Light pollution overlay | `/api/lightpollution/tile/...` | Server-rendered PNG tiles, opacity slider, legend |
 | Map-first interface | — | Full-bleed map, summary panel, layer rail, locate pin |
-| Test suite | — | 129 tests, `npm test`, no dependencies |
+| Twilight handling | — | Night window is astronomical dusk→dawn, falls back to sunset/sunrise at high latitudes |
+| Nearest dark site | `/api/darksite`, `/api/darksite/tonight` | Grid walk outward from the point; frontend popup offers "clear tonight" vs "dark regardless of forecast" |
+| Test suite | — | 158 tests, `npm test`, no dependencies |
 
 ---
 
@@ -112,13 +114,15 @@ deferred once the light-pollution grid turned out to be a raster.
 locations comparable. "Where should I drive tonight?" is arguably a better
 question than "how is it here?"
 
-**15. Find the nearest dark site.** Search the light pollution grid outward for
-the closest cell above a target SQM. The data is already in memory; this is a
-search problem, not a data problem. Now considerably more compelling with a map
-to display the answer on, and the UI concept explicitly calls for it — "recommends
-nearest location with nightly score over some threshold, nearest location with
-overall score over some threshold". Two distinct recommendations, since a place
-can be excellent tonight but ordinary in general, or the reverse.
+**15. ~~Find the nearest dark site.~~ DONE.** `backend/sources/darksite.js`
+searches the light pollution grid outward for the closest cell above a target
+SQM, served at `/api/darksite`; `/api/darksite/tonight` widens the search to
+the nearest few candidates and checks each against the forecast. The frontend
+popup offers both recommendations the UI concept called for — nearest dark
+site regardless of forecast, and nearest dark site that's also clear tonight —
+since a place can be excellent tonight but ordinary in general, or the
+reverse. Picking a result navigates to that site's own full report with a
+disclaimer and a one-hop back link.
 
 **15b. ~~Light pollution overlay on the map.~~ DONE.** Built as server-rendered
 PNG tiles. The `L.imageOverlay` alternative was rejected on inspection: the grid
@@ -143,9 +147,9 @@ answers the question directly, where a grey wash over a map does not.
 per-hour cloud cover, moon altitude, and effective SQM. Nothing renders it yet —
 the data is sitting there unused.
 
-**17. Twilight handling.** The night window runs sunset→sunrise, but astronomical
-twilight lasts up to ~90 minutes past sunset. True dark starts later than the
-current window claims, which makes early-evening hours look better than they are.
+**17. ~~Twilight handling.~~ DONE.** Night window now runs astronomical
+dusk→dawn (sun 18° below horizon), with graceful fallback to sunset/sunrise at
+high latitudes and the full hourly range in the polar edge case.
 
 ---
 
@@ -186,8 +190,8 @@ social features.
 
 1. ~~Tests~~ — done
 2. ~~Light pollution overlay~~ — done
-3. Twilight handling (4.17) — small fix, real accuracy gain
-4. Find nearest dark site (4.15) — the grid is loaded, there's a map to show it on, and the UI concept asks for it
+3. ~~Twilight handling~~ (4.17) — done
+4. ~~Find nearest dark site~~ (4.15) — done
 5. Aurora overlay (4.15c) — cheapest remaining map layer, renderer already exists
 6. Severe weather (2.4) — completes a PRD story, no key needed
 7. Hourly chart (4.16) — data already exists, pure frontend
