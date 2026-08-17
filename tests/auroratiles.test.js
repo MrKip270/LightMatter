@@ -195,6 +195,7 @@ test("the legend is generated from the same palette the tiles use, plus a timest
   assert.equal(status, 200);
 
   const body = JSON.parse(buffer.toString());
+  assert.equal(body.dataAvailable, true, "a successfully loaded grid, even an old one, counts as available");
   assert.equal(body.stops.length, h.PALETTE.length, "one stop per palette entry");
   assert.equal(body.maxNativeZoom, MAX_NATIVE_ZOOM);
   assert.equal(body.forecastTime, "2026-01-01T01:23Z");
@@ -207,5 +208,52 @@ test("the legend is generated from the same palette the tiles use, plus a timest
       `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`,
       `legend colour at probability ${stop.probability}`
     );
+  }
+});
+
+test("NOAA never answering is a genuine failure, not a quietly empty legend", async () => {
+  const originalFetch = globalThis.fetch;
+  h._reset();
+  globalThis.fetch = async () => {
+    throw new Error("NOAA is unreachable");
+  };
+
+  try {
+    const data = await tiles.legend();
+    assert.equal(data.dataAvailable, false);
+    assert.equal(data.observationTime, null);
+    assert.equal(data.forecastTime, null);
+
+    // The route must surface this as a real failure (502), not a 200 with
+    // silently null timestamps — a genuine outage must stay visible in logs
+    // instead of looking like an ordinary, quiet "nothing to report" response.
+    const { status, buffer } = await call("/api/aurora/tile/legend");
+    assert.equal(status, 502);
+    const body = JSON.parse(buffer.toString());
+    assert.match(body.error, /Could not fetch aurora data/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a failed fetch is not retried again within the cooldown window", async () => {
+  const originalFetch = globalThis.fetch;
+  h._reset();
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount++;
+    throw new Error("NOAA is unreachable");
+  };
+
+  try {
+    // Three separate calls in a row, simulating three separate requests
+    // arriving during an outage — none of them concurrent (no shared
+    // in-flight promise), so without a cooldown each would fetch on its own.
+    await tiles.renderTile(2, 1, 1);
+    await tiles.renderTile(2, 1, 1);
+    await tiles.legend();
+    assert.equal(fetchCount, 1, "the cooldown must block repeated fetch attempts, not just concurrent ones");
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

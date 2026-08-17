@@ -39,6 +39,11 @@ const HEIGHT = 181; // latitude -90..90 inclusive, one sample per degree
 // overlay honestly "live" without hammering their service on every tile.
 const GRID_TTL_MS = 5 * 60 * 1000;
 
+// A failed fetch does NOT bump fetchedAt, so without a separate cooldown a
+// stale-or-missing grid would retrigger a fresh NOAA request on every single
+// tile request during an outage — dozens per pan, with no backoff at all.
+const RETRY_COOLDOWN_MS = 30 * 1000;
+
 // --- Palette ---------------------------------------------------------------
 // Unlike the light-pollution palette (opaque tiles, blended by LAYER
 // opacity), probability drives per-pixel ALPHA directly: 0% is fully
@@ -116,6 +121,7 @@ let grid = null; // Uint8Array(WIDTH * HEIGHT), probability 0-100
 let observationTime = null;
 let forecastTime = null;
 let fetchedAt = 0;
+let lastAttemptAt = 0; // set on every refresh() attempt, success or failure
 let inFlight = null;
 
 async function refresh() {
@@ -148,7 +154,15 @@ async function refresh() {
 async function ensureFresh() {
   const isStale = Date.now() - fetchedAt > GRID_TTL_MS;
   if (grid && !isStale) return;
+
+  // Missing or stale, but we already tried recently and it didn't work —
+  // wait out the cooldown instead of firing another request. Without this,
+  // every non-concurrent request during a NOAA outage (e.g. someone panning
+  // the map every few seconds) would trigger its own fetch, unthrottled.
+  if (Date.now() - lastAttemptAt < RETRY_COOLDOWN_MS) return;
+
   if (!inFlight) {
+    lastAttemptAt = Date.now();
     inFlight = refresh()
       .catch(() => {
         // Swallowed deliberately: renderTile() below falls back to a blank
@@ -261,9 +275,16 @@ async function renderTile(z, x, y) {
 
 // Legend + timestamp for the frontend, generated from the same palette and
 // grid the tiles use so neither can drift out of sync with what's drawn.
+//
+// dataAvailable distinguishes "NOAA has never answered" from "NOAA answered
+// a while ago" — collapsing the two would report a genuine outage as a 200
+// with a quietly missing timestamp instead of surfacing it. A stale-but-real
+// grid still reports dataAvailable: true and serves its (aging) timestamps;
+// only "never fetched successfully, ever" counts as unavailable.
 async function legend() {
   await ensureFresh();
   return {
+    dataAvailable: grid !== null,
     stops: PALETTE.map(([probability, r, g, b, a]) => ({
       probability,
       colour: `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`,
@@ -286,6 +307,7 @@ module.exports = {
     PALETTE,
     WIDTH,
     HEIGHT,
+    RETRY_COOLDOWN_MS,
     // Test-only seam: lets tests install a known grid without a real NOAA
     // fetch. Never used by production code paths.
     _setGridForTests(nextGrid, obsTime, forTime) {
@@ -293,6 +315,7 @@ module.exports = {
       observationTime = obsTime;
       forecastTime = forTime;
       fetchedAt = Date.now();
+      lastAttemptAt = Date.now();
       tileCache.clear();
     },
     _reset() {
@@ -300,6 +323,7 @@ module.exports = {
       observationTime = null;
       forecastTime = null;
       fetchedAt = 0;
+      lastAttemptAt = 0;
       inFlight = null;
       tileCache.clear();
     },

@@ -13,8 +13,17 @@ const router = express.Router();
 
 router.get("/legend", async (req, res) => {
   try {
+    const data = await legend();
+
+    // NOAA has never answered successfully — a genuine failure, not "no
+    // data for this query". A stale-but-real grid still reports
+    // dataAvailable: true below and is served normally.
+    if (!data.dataAvailable) {
+      return res.status(502).json({ error: "Could not fetch aurora data" });
+    }
+
     res.json({
-      ...(await legend()),
+      ...data,
       units: "percent probability of visible aurora",
       maxNativeZoom: MAX_NATIVE_ZOOM,
       source: "NOAA SWPC OVATION",
