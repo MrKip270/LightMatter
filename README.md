@@ -107,8 +107,7 @@ LightMatter/
 │   ├── styles.css           # styling
 │   ├── coords.js            # pure coordinate maths  — no DOM, so it's testable
 │   ├── format.js            # pure display formatting — same reason
-│   ├── app.js               # DOM wiring: map, search, panel, fetch + render
-│   └── assets/logo.png
+│   └── app.js               # DOM wiring: map, search, panel, fetch + render — logo is inline SVG in here, no asset file
 ├── tools/                   # one-off dev scripts, not part of the server
 │   ├── inspect-atlas.js     #   print GeoTIFF header + probe pixels
 │   └── build-lightpollution.js  # downsample the atlas into backend/data/
