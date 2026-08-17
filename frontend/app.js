@@ -66,15 +66,34 @@ function render(state = {}) {
 
     <div class="logo">
       <svg class="logo-img" viewBox="0 0 100 100" fill="none" aria-hidden="true" focusable="false">
+        <defs>
+          <clipPath id="logoGlobeClip"><circle cx="50" cy="50" r="17" /></clipPath>
+        </defs>
         <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" />
         <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(60 50 50)" />
         <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" transform="rotate(120 50 50)" />
         <circle cx="50" cy="50" r="17" fill="var(--panel)" stroke="var(--text)" stroke-width="4" />
-        <path d="M40 44 q4 -6 8 -2 q3 3 -2 5 q-5 2 -3 6" stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M56 42 q5 4 2 8 q-3 3 2 6 q4 3 1 7" stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-        <circle cx="50" cy="10" r="4" fill="var(--rose)" />
-        <circle cx="50" cy="10" r="4" fill="var(--rose)" transform="rotate(60 50 50)" />
-        <circle cx="50" cy="10" r="4" fill="var(--rose)" transform="rotate(120 50 50)" />
+        <g clip-path="url(#logoGlobeClip)" stroke="var(--rose)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M44 39 C40 42 39 48 42 52 C44 55 43 60 46 62 C48 63 50 61 49 58 C48 55 51 53 50 49 C49 45 46 41 44 39 Z" />
+          <path d="M58 38 C62 40 63 45 60 48 C63 50 64 55 61 58 C59 60 56 58 57 55 C55 52 56 47 58 44 C56 42 56 40 58 38 Z" />
+        </g>
+        <g stroke="var(--rose)" stroke-width="2.4" stroke-linecap="round">
+          <g transform="translate(20 20)">
+            <line x1="-6" y1="0" x2="6" y2="0" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+          </g>
+          <g transform="translate(92 47)">
+            <line x1="-6" y1="0" x2="6" y2="0" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+          </g>
+          <g transform="translate(36 90)">
+            <line x1="-6" y1="0" x2="6" y2="0" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(60)" />
+            <line x1="-6" y1="0" x2="6" y2="0" transform="rotate(120)" />
+          </g>
+        </g>
       </svg>
       <span class="logo-word">LightMatter</span>
     </div>
