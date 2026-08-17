@@ -697,7 +697,21 @@ function wireTimelineChart() {
       `${formatHour(hour.time)} — ` +
       `${hour.cloudCover === null ? "cloud —" : hour.cloudCover + "% cloud"} · ` +
       `${hour.effectiveSqm === null ? "sky —" : hour.effectiveSqm + " mag/arcsec²"}`;
-    tooltip.style.left = `${(x / VIEW_WIDTH) * 100}%`;
+
+    // The tooltip is centred on the crosshair via CSS's translateX(-50%),
+    // which is fine mid-chart but pushes half the box past the panel edge
+    // for the first/last couple of hours — exactly where CLAUDE.md's own
+    // "look before asserting" doesn't apply, this was just never checked at
+    // the edges. Clamp the CENTRE point in pixels so neither edge of the
+    // (variable-width, nowrap) tooltip can go past the chart's own bounds.
+    const containerWidth = svg.getBoundingClientRect().width;
+    const tooltipWidth = tooltip.getBoundingClientRect().width;
+    const rawLeftPx = (x / VIEW_WIDTH) * containerWidth;
+    const clampedLeftPx = Math.min(
+      Math.max(rawLeftPx, tooltipWidth / 2),
+      containerWidth - tooltipWidth / 2
+    );
+    tooltip.style.left = `${clampedLeftPx}px`;
   };
 
   const hide = () => {
