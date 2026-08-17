@@ -29,11 +29,25 @@ function visibilityNote(verdict) {
   switch (verdict) {
     case "Clear":
       return "Good visibility";
+    case "Clears overnight":
+      return "Reduced visibility, but a clear window opens up later";
     case "Partly cloudy":
       return "Reduced to very reduced visibility";
     default:
       return "Low to no visibility";
   }
+}
+
+// A usable clear run can exist inside an otherwise cloudy night — that run is
+// worth a "Clear" verdict for the WINDOW, but not for the night's own average.
+// Calling the whole night "Clear" when it averages 64% cloud cover contradicts
+// the average sitting right next to this word (see formatCloud in
+// frontend/format.js) and the headline built from that same average in
+// scoring.js's buildHeadline. "Clears overnight" says the true thing: mostly
+// cloudy, with a real window later.
+function verdictWithUsableWindow(average, hasUsableWindow) {
+  const overall = cloudVerdict(average);
+  return hasUsableWindow && overall !== "Clear" ? "Clears overnight" : overall;
 }
 
 // "2026-07-31T20:10" -> "2026-07-31T20:00"
@@ -237,7 +251,7 @@ async function getClouds(lat, lon) {
     );
   const bestRun = longestClearRun(nightHours);
   const hasUsableWindow = bestRun.length >= MIN_USEFUL_RUN_HOURS;
-  const verdict = hasUsableWindow ? "Clear" : cloudVerdict(average);
+  const verdict = verdictWithUsableWindow(average, hasUsableWindow);
 
   return {
     source: "Open-Meteo forecast",
@@ -271,6 +285,7 @@ module.exports = {
   helpers: {
     cloudVerdict,
     visibilityNote,
+    verdictWithUsableWindow,
     floorToHour,
     utcToLocalIso,
     selectHoursInWindow,

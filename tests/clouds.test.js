@@ -119,6 +119,33 @@ test("cloudVerdict boundaries land on the right side", () => {
   assert.equal(h.cloudVerdict(100), "Overcast");
 });
 
+test("verdictWithUsableWindow: a usable window inside a cloudy night reads as \"Clears overnight\", not \"Clear\"", () => {
+  // A real bug: a mostly-overcast night with one clear stretch used to report
+  // the bare word "Clear" next to its own high average (e.g. "64% avg ·
+  // Clear"), directly contradicting both the average and the headline built
+  // from it. The verdict must describe the WHOLE night, and a real window
+  // gets its own honest phrase instead of overclaiming the whole night.
+  assert.equal(h.verdictWithUsableWindow(64, true), "Clears overnight");
+  assert.equal(h.verdictWithUsableWindow(90, true), "Clears overnight");
+});
+
+test("verdictWithUsableWindow: an already-clear night stays \"Clear\", window or not", () => {
+  // A night that's already clear on average doesn't need the "overnight"
+  // qualifier — "Clear" already tells the truth.
+  assert.equal(h.verdictWithUsableWindow(10, true), "Clear");
+  assert.equal(h.verdictWithUsableWindow(10, false), "Clear");
+});
+
+test("verdictWithUsableWindow: no usable window falls back to the plain average verdict", () => {
+  assert.equal(h.verdictWithUsableWindow(64, false), "Partly cloudy");
+  assert.equal(h.verdictWithUsableWindow(90, false), "Overcast");
+});
+
+test("visibilityNote names \"Clears overnight\" distinctly from a fully clear night", () => {
+  assert.notEqual(h.visibilityNote("Clears overnight"), h.visibilityNote("Clear"));
+  assert.equal(h.visibilityNote("Clears overnight"), "Reduced visibility, but a clear window opens up later");
+});
+
 test("REGRESSION: a data gap must not read as clear sky", () => {
   // `null <= 20` is TRUE in JavaScript, because null coerces to 0. Without an
   // explicit null check, missing data would masquerade as a perfectly clear
