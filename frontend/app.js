@@ -284,7 +284,7 @@ function timelineChartMarkup(d) {
 
   return `
     <div class="chart-section">
-      <p class="k">Tonight, hour by hour</p>
+      <p class="section-label">Tonight, hour by hour</p>
       <div class="timeline-chart">
         <svg class="chart-svg" viewBox="${chart.viewBox}" preserveAspectRatio="none" tabindex="0"
              role="img" aria-label="Hourly cloud cover and effective sky darkness tonight, from ${esc(
@@ -381,6 +381,7 @@ function infoBody(state) {
 
     ${timelineChartMarkup(d)}
 
+    <p class="section-label">What you'll see tonight</p>
     <ul class="targets">
       ${d.targets
         .map(
@@ -390,6 +391,7 @@ function infoBody(state) {
         .join("")}
     </ul>
 
+    <p class="section-label">Conditions</p>
     <div class="readout mono">
       ${row("Cloud cover", formatCloud(d.sources?.clouds))}
       ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
@@ -771,8 +773,11 @@ async function suggest(text, list) {
       .join("");
     list.hidden = false;
   } catch {
-    // Suggestions are a convenience. If they fail, the search button still works.
+    // A request failure and a genuine zero-result search must not look the
+    // same — silence here reads as "that place doesn't exist" to someone on
+    // a bad connection, when the truth is search couldn't be reached at all.
     list.hidden = true;
+    toast("Couldn’t reach search — try again.");
   }
 }
 
