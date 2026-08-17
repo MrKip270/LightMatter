@@ -43,8 +43,15 @@ function formatCount(n) {
 }
 
 // Cloud cover as a single readable phrase.
+//
+// A dash means the same thing everywhere else in this readout: a successful
+// lookup with nothing to report. An upstream failure is a different fact —
+// the forecast wasn't checked at all — so it gets its own phrase rather than
+// collapsing into the same dash and reading as "clear skies" by omission.
 function formatCloud(clouds) {
-  if (!clouds || clouds.error || !clouds.dataAvailable) return "—";
+  if (!clouds) return "—";
+  if (clouds.error) return "Unavailable — couldn’t reach the forecast";
+  if (!clouds.dataAvailable) return "—";
   return `${clouds.averageCloudCover}% avg · ${clouds.verdict}`;
 }
 

@@ -86,11 +86,12 @@ test("formatCloud combines the average and the verdict", () => {
   );
 });
 
-test("formatCloud distinguishes no data from a failure, and shows neither", () => {
-  // Both end up as an em dash in the UI, but the caller must be able to pass
-  // either shape without the formatter throwing.
+test("formatCloud distinguishes no data from a failure", () => {
+  // A dash means "checked, nothing to report" everywhere else in the
+  // readout. An upstream failure means the forecast was never checked, so it
+  // must not collapse into the same dash — that would read as clear skies.
   assert.equal(formatCloud({ dataAvailable: false }), "—");
-  assert.equal(formatCloud({ error: "upstream down" }), "—");
+  assert.equal(formatCloud({ error: "upstream down" }), "Unavailable — couldn’t reach the forecast");
   assert.equal(formatCloud(null), "—");
   assert.equal(formatCloud(undefined), "—");
 });
