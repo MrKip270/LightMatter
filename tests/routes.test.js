@@ -11,6 +11,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
+
+const GRID_PATH = path.join(__dirname, "..", "backend", "data", "lightpollution.bin");
+const gridExists = fs.existsSync(GRID_PATH);
 
 // --- Canned upstream responses ------------------------------------------------
 // Captured from the real APIs, trimmed. Using a real captured shape matters:
@@ -107,6 +112,7 @@ test("every route rejects out-of-range coordinates with 400", async () => {
     ["/api/aurora", "../backend/routes/aurora"],
     ["/api/moon", "../backend/routes/moon"],
     ["/api/lightpollution", "../backend/routes/lightpollution"],
+    ["/api/darksite", "../backend/routes/darksite"],
     ["/api/sky", "../backend/routes/sky"],
   ];
 
@@ -207,6 +213,24 @@ test("aurora route reports 0 rather than failing outside the grid", async () => 
   }
 });
 
+test("aurora route's own error shape on a NOAA outage", async () => {
+  // The generic 400 table above covers validation; this covers the route's
+  // OWN error path independent of sources/aurora.js's internals.
+  const restore = mockFetch({ failNoaa: true });
+  try {
+    const { status, body } = await call(
+      "/api/aurora",
+      "../backend/routes/aurora",
+      "lat=41.88&lon=-87.63"
+    );
+    assert.equal(status, 502);
+    assert.equal(body.error, "Could not fetch aurora data");
+    assert.equal(typeof body.detail, "string");
+  } finally {
+    restore();
+  }
+});
+
 test("moon route accepts a future date", async () => {
   const { status, body } = await call(
     "/api/moon",
@@ -294,3 +318,86 @@ test("/api/sky returns the full documented shape", async () => {
     restore();
   }
 });
+
+// --- Darksite --------------------------------------------------------------------
+//
+// The generic out-of-range-coordinates 400 is already covered by the shared
+// route table above. What's specific to this route and was previously
+// untested at the HTTP layer: minSqm parsing, the grid-missing 503, and a
+// basic happy path for both endpoints.
+//
+// call() (above) mounts a router directly AT the path it's given, which is
+// wrong for darksite's "/" and "/tonight" sub-routes — mounting the whole
+// router at ".../tonight" makes Express strip that entire prefix and match
+// the router's OWN "/" handler (the plain search), silently calling the
+// wrong endpoint. This helper always mounts at the router's real base and
+// requests the sub-path explicitly, the way an actual client would.
+async function callDarksite(subPath, query) {
+  const app = express();
+  app.use("/api/darksite", require("../backend/routes/darksite"));
+
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const response = await globalThis.__realFetch(
+      `http://127.0.0.1:${port}/api/darksite${subPath}?${query}`
+    );
+    return { status: response.status, body: await response.json() };
+  } finally {
+    server.close();
+  }
+}
+
+test("darksite route rejects a non-numeric minSqm", { skip: !gridExists }, async () => {
+  const { status, body } = await callDarksite("", "lat=41.8827&lon=-87.6233&minSqm=notanumber");
+  assert.equal(status, 400);
+  assert.equal(body.error, "minSqm must be a number");
+});
+
+test("darksite/tonight rejects a non-numeric minSqm the same way", { skip: !gridExists }, async () => {
+  // parseMinSqm is shared between the two handlers — this confirms the
+  // /tonight route actually wires it up too, not just the plain one.
+  const { status, body } = await callDarksite(
+    "/tonight",
+    "lat=41.8827&lon=-87.6233&minSqm=notanumber"
+  );
+  assert.equal(status, 400);
+  assert.equal(body.error, "minSqm must be a number");
+});
+
+test("darksite route returns a real nearest-site result for a lit city", { skip: !gridExists }, async () => {
+  const { status, body } = await callDarksite(
+    "",
+    "lat=41.8827&lon=-87.6233" // Chicago Loop — well-established test coordinate
+  );
+  assert.equal(status, 200);
+  assert.ok(body.found, "Chicago is reliably lit enough that a darker site exists nearby");
+  assert.ok(body.distanceKm > 0);
+  assert.equal(body.weather, undefined, "the plain search doesn't check weather — that's /tonight's job");
+});
+
+test("darksite/tonight route returns a real result, weather-checked", { skip: !gridExists }, async () => {
+  const restore = mockFetch();
+  try {
+    const { status, body } = await callDarksite("/tonight", "lat=41.8827&lon=-87.6233");
+    assert.equal(status, 200);
+    assert.equal(body.found, true);
+    assert.ok(body.weather?.dataAvailable, "the /tonight variant includes a weather check the plain route doesn't");
+  } finally {
+    restore();
+  }
+});
+
+test(
+  "darksite route reports 503 when the grid hasn't been built",
+  // Meaningful only on a fresh clone that hasn't run the build tool — mirrors
+  // the inverse of every other grid-dependent test's { skip: !gridExists }.
+  { skip: gridExists },
+  async () => {
+    const { status, body } = await callDarksite("", "lat=41.8827&lon=-87.6233");
+    assert.equal(status, 503);
+    assert.match(body.error, /Light pollution grid not built/);
+  }
+);

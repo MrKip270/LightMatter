@@ -146,7 +146,7 @@ server and no network.
 
 ## Running it
 
-Requirements: Node.js (v18+) and npm.
+Requirements: Node.js (v20+, for the test runner's custom-reporter support) and npm.
 
 ```bash
 npm install          # install dependencies (first time only)
@@ -271,7 +271,8 @@ date using predictive weather patterns.
 
 Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
 
-1. ~~**A real test suite**~~ — done. 171 tests, no network, ~2s.
+1. ~~**A real test suite**~~ — done. 204 tests, no network, ~2s, grouped by
+   file in `npm test`'s output rather than listed individually.
 2. ~~**Twilight handling**~~ — done. Night window uses astronomical darkness
    (sun 18° below horizon) rather than sunset/sunrise.
 3. ~~**Nearest dark site**~~ — done. Walks the light pollution grid outward from

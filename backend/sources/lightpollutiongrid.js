@@ -16,7 +16,11 @@
 const fs = require("fs");
 const path = require("path");
 
-const GRID_PATH = path.join(__dirname, "..", "data", "lightpollution.bin");
+// Overridable via env var so a spawned child process can test the
+// missing/corrupt-file branches below without touching the real 23 MB grid —
+// defaults to today's exact path, so nothing changes for every normal run.
+const GRID_PATH =
+  process.env.LIGHTPOLLUTION_GRID_PATH || path.join(__dirname, "..", "data", "lightpollution.bin");
 
 let grid = null;
 let meta = null;

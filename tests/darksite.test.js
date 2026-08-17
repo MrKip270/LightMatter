@@ -131,6 +131,58 @@ test("outside the atlas extent returns no data, not an error", { skip: !gridExis
   assert.equal(southPole.found, undefined);
 });
 
+// --- Grid-edge boundary (rowColFor's off-by-one) ---------------------------
+//
+// outsideExtent is `col0 < 0 || col0 >= width || row0 < 0 || row0 >= height`.
+// Every other test in this file queries points well inside the extent, so
+// the boundary itself — inclusive on one side, exclusive on the other —
+// was never directly pinned. Tested at the source (rowColFor/ringCells)
+// rather than through the full findNearestDarkSite search: a query at row 0
+// sits on the atlas's pristine ceiling (~22.0 sqm), and findNearestDarkSite
+// searches for something DARKER than its own origin — which can never
+// succeed there (see the "already clears the floor" regression test below),
+// so it burns through the entire bounded search radius before giving up.
+// That's real, correct behavior, just an expensive way to test a boundary
+// condition that doesn't depend on it. Values are derived from the real
+// grid's own meta, not hardcoded, so this stays correct if the grid is ever
+// rebuilt at a different resolution.
+
+test("rowColFor at the grid's exact top-left corner lands in bounds", { skip: !gridExists }, () => {
+  const { meta } = require("../backend/sources/lightpollutiongrid");
+  const { row, col } = h.rowColFor(meta.originY, meta.originX);
+  // === rather than assert.equal: floor(0 / negativeResY) is -0 in JS, which
+  // is a harmless floating-point quirk (-0 === 0), not a real off-by-one —
+  // assert.equal's stricter Object.is-style comparison would fail on it.
+  assert.ok(row === 0, `expected row 0, got ${row}`);
+  assert.ok(col === 0, `expected col 0, got ${col}`);
+});
+
+test("rowColFor just north of the top edge lands out of bounds — the off-by-one", { skip: !gridExists }, () => {
+  const { meta } = require("../backend/sources/lightpollutiongrid");
+  // originY is the grid's northernmost latitude; anything north of it must
+  // map to row -1. This is the exact boundary rowColFor's floor() + the
+  // caller's `row0 < 0` check exist to catch.
+  const { row } = h.rowColFor(meta.originY + 0.01, meta.originX);
+  assert.ok(row < 0, `expected a negative row just north of the edge, got ${row}`);
+});
+
+test("rowColFor just west of the left edge lands out of bounds", { skip: !gridExists }, () => {
+  const { meta } = require("../backend/sources/lightpollutiongrid");
+  const { col } = h.rowColFor(meta.originY, meta.originX - 0.01);
+  assert.ok(col < 0, `expected a negative col just west of the edge, got ${col}`);
+});
+
+test("a ring search starting at row 0 genuinely produces out-of-bounds cells at radius 1", { skip: !gridExists }, () => {
+  // Confirms the clipping guard inside searchCandidates (`if (row < 0 || ...)
+  // continue;`) is protecting against a REAL case, not a hypothetical one —
+  // any search whose query point sits on the grid's edge reaches negative
+  // rows on the very first ring, not some large, hard-to-reach radius.
+  const cells = [...h.ringCells(0, 100, 1)];
+  const outOfBounds = cells.filter(([row]) => row < 0);
+  assert.ok(outOfBounds.length > 0, "ring radius 1 from row 0 must include row -1 cells");
+  assert.ok(cells.some(([row]) => row >= 0), "and still include valid, in-bounds cells alongside them");
+});
+
 test("a threshold nothing can reach returns found: false, not a crash", { skip: !gridExists }, () => {
   // The natural sky ceiling is ~22.0 (see the mid-Pacific fixture in
   // lightpollution.test.js) — no real place reaches 25. This must degrade
@@ -389,6 +441,22 @@ test("PIN: an exact tie in real tonight-score is not an improvement", { skip: !g
   });
 
   assert.equal(result.found, false, `a tied score must not count as an improvement, got score ${result.score}`);
+});
+
+test("KNOWN BUG: candidateCount: 0 throws instead of returning no candidates", { skip: !gridExists }, async () => {
+  // searchCandidates' early-stop check (`if (candidates.length >= count)`)
+  // is true on the very first radius when count is 0, before any candidate
+  // has ever been pushed — so it reads candidates[candidates.length - 1]
+  // (candidates[-1] === undefined) and throws a TypeError instead of
+  // degrading to "no candidates". Found while writing coverage for this
+  // function; pinned here rather than fixed so a future caller passing (or
+  // computing) candidateCount: 0 doesn't regress into something worse than
+  // this already-bad behavior. Fix: guard the early-stop with `count > 0 &&`
+  // in backend/sources/darksite.js's searchCandidates (~line 146).
+  await assert.rejects(
+    () => findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, { candidateCount: 0 }),
+    /Cannot read propert(y|ies) of undefined/
+  );
 });
 
 // --- Property: never recommend a worse real score tonight ---------------------

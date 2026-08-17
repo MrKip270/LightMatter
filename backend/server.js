@@ -53,7 +53,13 @@ app.use("/api/sky", skyRoute);
 //    API route above falls through to here (e.g. "/" -> index.html).
 app.use(express.static(path.join(__dirname, "..", "frontend")));
 
-// 8. Start listening for requests.
-app.listen(PORT, () => {
-  console.log(`LightMatter server running at http://localhost:${PORT}`);
-});
+// 8. Start listening for requests — but only when this file is run directly
+//    (`npm start`), not when a test require()s it to hit the real app on an
+//    ephemeral port. `require.main === module` is the standard Node check
+//    for "was this the entry point or just imported".
+module.exports = app;
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`LightMatter server running at http://localhost:${PORT}`);
+  });
+}

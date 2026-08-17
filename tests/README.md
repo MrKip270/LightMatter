@@ -1,14 +1,22 @@
 # Tests
 
-171 tests, no dependencies — Node's built-in runner (`node --test`).
+204 tests, no dependencies — Node's built-in runner (`node --test`).
 
 ## Running them
 
 ```bash
-npm test              # run once
-npm run test:watch    # re-run on save, use this while coding
+npm test              # run once — grouped by file, see below
+npm run test:watch    # re-run on save, use this while coding (full detail)
 npm run test:coverage # line/branch/function coverage
 ```
+
+`npm test` uses a small custom reporter (`tests/reporters/grouped.js`) that
+prints one line per test FILE rather than one line per test — 200+ individual
+names is noise when all you want is "is everything green." A failing test
+still prints full detail (name, stack, the real assertion diff) directly
+under its file's line. `npm run test:watch` stays on Node's default verbose
+reporter, since seeing every test name is actually useful while you're
+mid-edit.
 
 Run a single file while working on one area:
 
@@ -22,15 +30,15 @@ Filter to one test by name:
 node --test --test-name-pattern="multiplicative" "tests/**/*.test.js"
 ```
 
-Quiet output when you only care whether it's green:
+Quieter still — a single dot per test, no filenames at all:
 
 ```bash
 node --test --test-reporter=dot "tests/**/*.test.js"
 ```
 
-The suite takes under a second and makes **no network calls**, so there is no
-reason not to run it constantly. `npm run test:watch` in a spare terminal is the
-intended workflow.
+The suite takes about two seconds and makes **no network calls**, so there is
+no reason not to run it constantly. `npm run test:watch` in a spare terminal
+is the intended workflow.
 
 ## What's here
 
@@ -40,13 +48,17 @@ intended workflow.
 | `clouds.test.js` | Night-window slicing, clear runs, the null-coercion trap |
 | `moon.test.js` | Phase physics, moonlight model, phase-finding invariants, eclipses |
 | `lightpollution.test.js` | Limiting magnitude, star counts, grid lookup |
+| `lightpollutiongrid.test.js` | Missing/corrupt grid file → the right error, via a spawned process |
 | `sky.test.js` | Scoring, both score types, target verdicts, best window, degradation |
+| `scoring.test.js` | Boundary/branch cases in scoring.js not reached via sky.test.js |
 | `lightpollutiontiles.test.js` | Slippy-map projection, palette, PNG rendering, tile route |
 | `auroratiles.test.js` | Alpha palette, live-grid cache/staleness fallback, tile route |
 | `reversegeocode.test.js` | Label building, User-Agent policy, throttling, caching |
+| `geocode.test.js` | Empty-query rejection, name-match reshaping, fuzzy-match fallback |
 | `coords.test.js` | Longitude wrapping, latitude clamping, typed-coordinate parsing |
 | `format.test.js` | Score bands, hour formatting, cloud and eclipse strings |
 | `routes.test.js` | Status codes, validation, response shape, per-source degradation |
+| `server.test.js` | The real Express app (not a copy) actually serves both tile endpoints |
 
 `frontend/coords.js` and `frontend/format.js` hold the pure logic precisely so
 Node can `require()` them. `app.js` cannot be tested this way — it calls
