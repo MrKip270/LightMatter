@@ -128,6 +128,15 @@ function searchCandidates(lat, lon, minSqm, count, qualifies = () => true) {
     return { outsideExtent: true, candidates: [] };
   }
 
+  // Asking for the nearest zero candidates is trivially an empty list — no
+  // ring walk needed. Without this, the early-stop check below reads
+  // candidates[-1] before any candidate has ever been pushed (count === 0
+  // makes candidates.length >= count true on the very first radius) and
+  // throws a TypeError instead of degrading gracefully.
+  if (count <= 0) {
+    return { outsideExtent: false, candidates: [] };
+  }
+
   const perStepKm = kmPerRingStep(lat);
   // Bounded twice: by real-world distance, and (in case perStepKm is tiny
   // near the poles) by the grid's own size, so a pathological threshold can

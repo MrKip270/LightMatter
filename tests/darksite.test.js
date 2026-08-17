@@ -443,20 +443,20 @@ test("PIN: an exact tie in real tonight-score is not an improvement", { skip: !g
   assert.equal(result.found, false, `a tied score must not count as an improvement, got score ${result.score}`);
 });
 
-test("KNOWN BUG: candidateCount: 0 throws instead of returning no candidates", { skip: !gridExists }, async () => {
-  // searchCandidates' early-stop check (`if (candidates.length >= count)`)
-  // is true on the very first radius when count is 0, before any candidate
-  // has ever been pushed — so it reads candidates[candidates.length - 1]
-  // (candidates[-1] === undefined) and throws a TypeError instead of
-  // degrading to "no candidates". Found while writing coverage for this
-  // function; pinned here rather than fixed so a future caller passing (or
-  // computing) candidateCount: 0 doesn't regress into something worse than
-  // this already-bad behavior. Fix: guard the early-stop with `count > 0 &&`
-  // in backend/sources/darksite.js's searchCandidates (~line 146).
-  await assert.rejects(
-    () => findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, { candidateCount: 0 }),
-    /Cannot read propert(y|ies) of undefined/
-  );
+test("REGRESSION: candidateCount: 0 degrades to no candidates instead of throwing", { skip: !gridExists }, async () => {
+  // Used to throw a TypeError: searchCandidates' early-stop check read
+  // candidates[-1] before any candidate had ever been pushed, because
+  // count === 0 makes `candidates.length >= count` true on the very first
+  // radius. Fixed by short-circuiting count <= 0 to an empty candidate list
+  // before the ring walk starts (backend/sources/darksite.js, top of
+  // searchCandidates) — asking for the nearest zero candidates is trivially
+  // an empty list, no search needed.
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 0,
+  });
+  assert.equal(result.dataAvailable, true);
+  assert.equal(result.found, false);
+  assert.equal(result.candidatesChecked, 0);
 });
 
 // --- Property: never recommend a worse real score tonight ---------------------
