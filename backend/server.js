@@ -10,6 +10,7 @@ const path = require("path");
 const geocodeRoute = require("./routes/geocode");
 const auroraRoute = require("./routes/aurora");
 const cloudsRoute = require("./routes/clouds");
+const darkSiteRoute = require("./routes/darksite");
 const lightPollutionRoute = require("./routes/lightpollution");
 const lightPollutionTilesRoute = require("./routes/lightpollutiontiles");
 const moonRoute = require("./routes/moon");
@@ -27,6 +28,7 @@ const PORT = process.env.PORT || 3000;
 //    /api/aurora  -> aurora probability for coordinates
 //    /api/clouds  -> tonight's cloud cover for coordinates
 //    /api/lightpollution -> sky darkness for coordinates (local dataset)
+//    /api/darksite -> nearest cell in that dataset meeting a target darkness
 //    /api/sky     -> ALL of the above, combined into one verdict
 //    Future sources (satellites, sky events) line up here the same way.
 app.use("/api/geocode", geocodeRoute);
@@ -38,6 +40,7 @@ app.use("/api/clouds", cloudsRoute);
 // otherwise swallow /tile/... as a query with no coordinates.
 app.use("/api/lightpollution/tile", lightPollutionTilesRoute);
 app.use("/api/lightpollution", lightPollutionRoute);
+app.use("/api/darksite", darkSiteRoute);
 app.use("/api/moon", moonRoute);
 app.use("/api/sky", skyRoute);
 
