@@ -172,16 +172,27 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 :focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
 
 /* ============================================================================
-   LOGO — top right, corner only
+   LOGO — top right, corner only, on every page (fixed rather than absolute so
+   it stays put on the scrolling about page, not just the fixed-viewport map).
 
-   Everything inside is sized in `em`, so the single font-size below scales the
-   whole lockup: padding, gap and mark all follow. Changing the size is one
-   number rather than six that can drift out of proportion.
+   Everything inside .logo is sized in `em`, so the single font-size below
+   scales the whole lockup: padding, gap and mark all follow. Changing the
+   size is one number rather than six that can drift out of proportion.
    ========================================================================= */
-.logo {
-  position: absolute;
+.logo-stack {
+  position: fixed;
   top: calc(1.05rem + env(safe-area-inset-top, 0px));
   right: calc(1.3rem + env(safe-area-inset-right, 0px));
+  /* Below .entry's 900: the logo and About link must not be reachable
+     above the first-visit intro modal, which has no focus trap and relies
+     entirely on stacking order to block interaction underneath it. */
+  z-index: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.logo {
   display: flex;
   align-items: center;
   gap: 0.26em;
@@ -194,9 +205,29 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   -webkit-backdrop-filter: var(--blur);
   border: 1px solid var(--edge-lit);
   color: var(--rose);
+  text-decoration: none;
 }
+.logo:hover { border-color: var(--brick); }
 .logo-img { height: 1.24em; width: auto; display: block; }
 .logo-word { letter-spacing: 0.01em; }
+
+.about-pill {
+  font-family: var(--data);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  text-decoration: none;
+  padding: 0.55em 0.9em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--edge-lit);
+  color: var(--text-dim);
+}
+.about-pill:hover,
+.about-pill[aria-current="page"] { border-color: var(--brick); color: var(--text); }
 
 /* ============================================================================
    MENU — top left
@@ -933,6 +964,80 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   to { opacity: 1; }
 }
 
+/* ============================================================================
+   ABOUT PAGE — a normal scrolling document, not the fixed map viewport.
+   Reuses the same tokens/panel language as the map chrome so it doesn't read
+   as a second, unrelated site.
+   ========================================================================= */
+.about-body { overflow-y: auto; }
+
+.about {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: calc(6.5rem + env(safe-area-inset-top, 0px)) 1.5rem calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.about-intro { margin-bottom: 2.5rem; }
+.about-intro .display { font-size: 32px; margin-bottom: 1rem; }
+.about-lede {
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0 0 1.6rem;
+}
+.about-lede strong { color: var(--text); font-weight: 600; }
+
+.about-section {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  padding: 1.8rem 2rem;
+  margin-bottom: 1.5rem;
+}
+.about-section .display { font-size: 24px; margin-bottom: 0.9rem; }
+.about-section p {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0 0 1rem;
+}
+.about-section p:last-child { margin-bottom: 0; }
+.about-section strong { color: var(--text); font-weight: 600; }
+.about-section code {
+  font-family: var(--data);
+  font-size: 0.92em;
+  color: var(--rose);
+}
+.about-section a { color: var(--rose); }
+.about-section a:hover { color: var(--peak); }
+
+.about-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.about-list li {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  padding-left: 1rem;
+  border-left: 2px solid var(--edge-lit);
+}
+
+.about-legal p { font-size: 13px; }
+
+.about-footer {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.5rem calc(3rem + env(safe-area-inset-bottom, 0px));
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
 @media (max-width: 46rem) {
   .info { width: 100%; min-width: 0; max-width: none; }
   .searchwrap { width: 90%; bottom: calc(9% + env(safe-area-inset-bottom, 0px)); }
@@ -942,6 +1047,8 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   .entry-logo { width: 64px; height: 64px; }
   .suggestions li { padding: 0.75rem 0.8rem; }
   .map-hint { bottom: calc(9% + 60px + env(safe-area-inset-bottom, 0px)); }
+  .about-section { padding: 1.5rem 1.3rem; }
+  .about { padding-top: calc(8.5rem + env(safe-area-inset-top, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
