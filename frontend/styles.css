@@ -147,7 +147,44 @@ html, body {
   line-height: 1.05;
   letter-spacing: -0.01em;
   margin: 0;
+  text-wrap: balance;
 }
+
+/* Visually hidden but present for assistive tech — the persistent page <h1>
+   in index.html, and the target for .skip-link below. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -3rem;
+  left: 1rem;
+  z-index: 1200;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--edge-lit);
+  text-decoration: none;
+  /* Literal `ease`, not var(--ease): verified in Chrome that a custom
+     property as the timing function on an element starting fully
+     off-screen (top: -3rem, never painted) leaves the transition stuck —
+     `top` stays pinned at its base value even under :focus-visible, which
+     transitions normally out-rank !important for. A literal function does
+     not hit this. Every other var(--ease) transition in this file animates
+     an already-visible element, so it isn't affected the same way. */
+  transition: top 160ms ease;
+}
+.skip-link:focus-visible { top: 1rem; }
 
 .eyebrow {
   font-family: var(--data);
@@ -290,7 +327,10 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 }
 .info-close:hover { border-color: var(--edge-lit); color: var(--rose); }
 
-.info-title { font-size: 30px; margin-bottom: 1.3rem; }
+/* overflow-wrap: this holds an externally-sourced place name (typed text,
+   Nominatim's reverse-geocode label) of unbounded length in a fixed-width
+   (340-470px) panel — a long unbroken token must not be able to overflow it. */
+.info-title { font-size: 30px; margin-bottom: 1.3rem; overflow-wrap: break-word; }
 
 .scoreline { display: flex; gap: 1rem; }
 .scorebox {
@@ -866,6 +906,7 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
   z-index: 900;
   display: grid;
   place-items: center;
+  padding: 1.5rem;
   background: color-mix(in srgb, var(--ink) 86%, transparent);
   backdrop-filter: blur(6px);
 }
@@ -873,6 +914,16 @@ button, input, a { touch-action: manipulation; -webkit-tap-highlight-color: tran
 .entry-card {
   width: min(48%, 640px);
   min-width: 320px;
+  /* On a short viewport (e.g. landscape phone) the title + lede + tips +
+     button can exceed the available height — without this, the "Open the
+     map" button could be pushed below the fold with no way to reach it.
+     A vh-based max-height, not a percentage: .entry's grid row track sizes
+     to its content (place-items: center doesn't stretch it), so a
+     percentage max-height here would resolve against an indefinite height
+     and do nothing — the classic percentage-height-of-auto-height problem. */
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 2rem 2.1rem;
   border-radius: 20px;
   background: var(--panel);

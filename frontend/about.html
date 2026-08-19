@@ -66,7 +66,7 @@
         phase</strong> and moonlight-brightness modeling, and <strong>aurora
         borealis probability</strong> from NOAA space-weather data into a single
         viewing score and a best-time-to-go-outside window for any location on
-        Earth. It's built for casual sky-watchers, <strong>astrophotographers</strong>
+        Earth. It’s built for casual sky-watchers, <strong>astrophotographers</strong>
         planning a shoot, aurora chasers deciding whether to drive, and anyone
         who wants a <strong>dark sky finder</strong> to locate the nearest
         low-light-pollution site near them — a night-sky visibility and
@@ -79,7 +79,7 @@
       <p class="eyebrow">The story</p>
       <h2 class="display">Why I built this</h2>
       <p>
-        I'm a CS student, and LightMatter started as a way to actually learn
+        I’m a CS student, and LightMatter started as a way to actually learn
         full-stack development rather than follow a tutorial — a real problem,
         end to end: a backend that talks to live APIs, a frontend with no
         framework to hide the DOM from me, real automated tests, and enough
@@ -92,7 +92,7 @@
         calendar and an aurora dashboard separately, then combining them in my
         head. LightMatter exists to do that combining for you — and to teach me,
         one data source at a time, everything from HTTP fan-out and partial
-        failure handling to bilinear interpolation and why magnitudes can't be
+        failure handling to bilinear interpolation and why magnitudes can’t be
         averaged like normal numbers.
       </p>
     </section>
@@ -124,7 +124,7 @@
           longitude (EPSG:4326) and Leaflet renders in Web Mercator (EPSG:3857),
           so a naive overlay would misplace high-latitude dark-sky sites by
           hundreds of kilometres.</li>
-        <li><strong>226 automated tests</strong>, Node's built-in test runner,
+        <li><strong>226 automated tests</strong>, Node’s built-in test runner,
           no dependencies — including property-based tests that sweep a whole
           domain (every hour of the lunar cycle, every latitude band) rather
           than a handful of hand-picked examples.</li>
@@ -135,7 +135,7 @@
       <p class="eyebrow">What I learned</p>
       <h2 class="display">Lessons learned</h2>
       <p>
-        These aren't hypothetical — each one shipped a real bug before it became
+        These aren’t hypothetical — each one shipped a real bug before it became
         a rule I follow now.
       </p>
       <ul class="about-list">
@@ -147,19 +147,19 @@
         <li><strong><code>null &lt;= 20</code> is <code>true</code> in JavaScript.</strong>
           <code>null</code> coerces to <code>0</code>. Without an explicit null
           check, a gap in cloud data silently reads as a perfectly clear sky.</li>
-        <li><strong>Timestamps aren't automatically instants.</strong> One API
+        <li><strong>Timestamps aren’t automatically instants.</strong> One API
           returns naive local-time strings scoped to the searched location, not
           the server or the viewer. Passing one straight into
           <code>new Date()</code> re-anchors it to the wrong timezone — invisible
           in development, wrong in production.</li>
         <li><strong>Leaflet reports unwrapped longitude.</strong> Panning east
           gives you 190°, 550°, 910° — all rejected by a ±180° API. Every map
-          click gets normalized before it's sent anywhere.</li>
+          click gets normalized before it’s sent anywhere.</li>
         <li><strong>Library versions change units without warning.</strong> The
           moon-position library returns degrees in the version this project
-          uses; most tutorials online still assume the older version's radians.
+          uses; most tutorials online still assume the older version’s radians.
           Verified empirically rather than assumed.</li>
-        <li><strong>A raster in one projection isn't a raster in another.</strong>
+        <li><strong>A raster in one projection isn’t a raster in another.</strong>
           The light-pollution grid is equirectangular; the map is Web Mercator.
           Treating them as interchangeable would have quietly misplaced every
           dark-sky recommendation near the poles.</li>
@@ -167,14 +167,14 @@
     </section>
 
     <section class="about-section">
-      <p class="eyebrow">What's next</p>
+      <p class="eyebrow">What’s next</p>
       <h2 class="display">Future improvements</h2>
       <p>
         Roughly in the order I plan to tackle them:
       </p>
       <ul class="about-list">
         <li><strong>Severe weather alerts</strong> — a tornado or storm warning
-          should be able to override the score entirely; a warning isn't a
+          should be able to override the score entirely; a warning isn’t a
           stargazing condition, however clear and dark the sky is.</li>
         <li><strong>Naked-eye planet visibility</strong> — replacing a static
           "bright planets" threshold with a real ephemeris so the report can say
@@ -200,7 +200,7 @@
       <p class="eyebrow">Credits</p>
       <h2 class="display">Data sources</h2>
       <p>
-        LightMatter doesn't collect or measure anything itself — it fans out to
+        LightMatter doesn’t collect or measure anything itself — it fans out to
         the sources below and combines what they return. Full credit to the
         people and agencies who make this data public:
       </p>
@@ -218,7 +218,7 @@
         <li><strong>NASA/GSFC Five Millennium Canon of Lunar Eclipses</strong> —
           verified eclipse timing.</li>
         <li><strong>suncalc</strong> — moon phase, illumination, altitude and
-          rise/set, computed locally from Meeus' <em>Astronomical Algorithms</em>,
+          rise/set, computed locally from Meeus’ <em>Astronomical Algorithms</em>,
           no network call required.</li>
       </ul>
     </section>
@@ -228,8 +228,8 @@
       <h2 class="display">Copyright &amp; licensing</h2>
       <p>
         LightMatter is a personal, <strong>non-commercial</strong> learning
-        project — it is not for profit, carries no ads, and isn't sold or
-        monetized in any way. That's partly a choice and partly a constraint:
+        project — it is not for profit, carries no ads, and isn’t sold or
+        monetized in any way. That’s partly a choice and partly a constraint:
         the light-pollution dataset above is licensed
         <strong>CC BY-NC 4.0 (NonCommercial)</strong>, which by itself prohibits
         commercial use of this site while that dataset is included. Attribution
@@ -239,13 +239,13 @@
         LightMatter is not affiliated with, endorsed by, or operated on behalf
         of NOAA, NASA, OpenStreetMap, Open-Meteo, or any other data provider
         listed above — it is an independent project that consumes their public,
-        free-tier data under each provider's own terms of use.
+        free-tier data under each provider’s own terms of use.
       </p>
       <p>
-        The project's own source code is available under the
-        <strong>ISC license</strong>. It's a personal repository, kept public so
+        The project’s own source code is available under the
+        <strong>ISC license</strong>. It’s a personal repository, kept public so
         the work is visible, not as an invitation for redistribution of the
-        underlying datasets — each dataset's own license still applies to it
+        underlying datasets — each dataset’s own license still applies to it
         independently of anything said here.
       </p>
     </section>

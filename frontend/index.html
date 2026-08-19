@@ -17,15 +17,23 @@
     rel="stylesheet"
   />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="preconnect" href="https://unpkg.com" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
+  <a class="skip-link" href="#main">Skip to map</a>
+
+  <!-- Stays in the a11y tree regardless of the entry modal's state, so the
+       page always has exactly one top-level heading — the modal's own
+       heading below is styling for the welcome copy, not the page's h1. -->
+  <h1 class="visually-hidden">LightMatter — what’s visible in the sky tonight</h1>
+
   <!-- The map sits underneath everything. Chrome is rendered by app.js BEFORE
        the map is initialised, so a Leaflet or network failure leaves a usable
        interface rather than a blank page. -->
-  <main>
+  <main id="main">
     <div id="map" aria-label="Map of sky conditions"></div>
   </main>
 
@@ -37,9 +45,9 @@
       <div class="entry-head">
         <div>
           <p class="eyebrow">Before you start stargazing</p>
-          <h1 class="display" id="entry-title">
+          <h2 class="display" id="entry-title">
             Find out what’s <em>actually</em><br />visible tonight.
-          </h1>
+          </h2>
         </div>
         <svg class="entry-logo" viewBox="0 0 100 100" fill="none" aria-hidden="true" focusable="false">
           <ellipse cx="50" cy="50" rx="18" ry="40" stroke="var(--text)" stroke-width="4" />
@@ -76,10 +84,10 @@
         <li><strong>Two scores.</strong> Tonight is what conditions allow right now;
           At its best is what the place offers on a clear, moonless night — so a
           cloudy night somewhere great still reads as worth a return trip.</li>
-        <li><strong>Layers</strong> — the tab on the map's edge — toggles the
+        <li><strong>Layers</strong> — the tab on the map’s edge — toggles the
           light-pollution and aurora overlays and their opacity sliders.</li>
         <li><strong>Find a darker sky</strong> shows up under your result and
-          suggests a nearby spot that's clear tonight, or the darkest one nearby
+          suggests a nearby spot that’s clear tonight, or the darkest one nearby
           regardless of forecast.</li>
       </ul>
       <button class="primary" id="entry-proceed">Open the map</button>

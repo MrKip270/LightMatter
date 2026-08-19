@@ -151,7 +151,7 @@ function render(state = {}) {
       <p class="toast panel" id="toast" role="status" aria-live="polite" hidden></p>
       <div class="search">
         <span class="glyph" aria-hidden="true">⌕</span>
-        <input id="q" type="text" placeholder="Enter a city, or click the map…"
+        <input id="q" name="q" type="text" inputmode="search" placeholder="Enter a city, or click the map…"
                autocomplete="off" aria-label="Search for a place"
                role="combobox" aria-expanded="false"
                aria-controls="suggestions" aria-autocomplete="list"
@@ -391,7 +391,7 @@ function infoBody(state) {
 
     ${timelineChartMarkup(d)}
 
-    <p class="section-label">What you'll see tonight</p>
+    <p class="section-label">What you’ll see tonight</p>
     <p class="targets-subhead dim">Naked eye</p>
     <ul class="targets">
       ${targetsList(d.targets.slice(0, 3))}
@@ -685,10 +685,17 @@ function wireTimelineChart() {
   const crosshair = svg.querySelector(".chart-crosshair");
   const tooltip = ui.querySelector(".chart-tooltip");
 
-  const showAt = (index) => {
+  // svgRect is optional: pointermove already reads it once to compute
+  // localX and passes it through, so showAt doesn't force a second,
+  // redundant layout read of the same element. focus/keydown (no pointer
+  // rect available) fall back to reading it themselves — those fire far
+  // less often, so a fresh read there is cheap.
+  const showAt = (index, svgRect) => {
     const hour = timeline[index];
     if (!hour) return;
     const x = xForIndex(index, n);
+    const containerWidth = (svgRect || svg.getBoundingClientRect()).width;
+
     crosshair.setAttribute("x1", x);
     crosshair.setAttribute("x2", x);
     crosshair.hidden = false;
@@ -704,7 +711,9 @@ function wireTimelineChart() {
     // "look before asserting" doesn't apply, this was just never checked at
     // the edges. Clamp the CENTRE point in pixels so neither edge of the
     // (variable-width, nowrap) tooltip can go past the chart's own bounds.
-    const containerWidth = svg.getBoundingClientRect().width;
+    // This read is unavoidably after the textContent write above — the
+    // tooltip's width depends on the text it holds — but it's now the only
+    // forced layout read left per call, not three.
     const tooltipWidth = tooltip.getBoundingClientRect().width;
     const rawLeftPx = (x / VIEW_WIDTH) * containerWidth;
     const clampedLeftPx = Math.min(
@@ -722,7 +731,7 @@ function wireTimelineChart() {
   svg.addEventListener("pointermove", (event) => {
     const rect = svg.getBoundingClientRect();
     const localX = ((event.clientX - rect.left) / rect.width) * VIEW_WIDTH;
-    showAt(nearestIndex(localX, n));
+    showAt(nearestIndex(localX, n), rect);
   });
   svg.addEventListener("pointerleave", hide);
 
