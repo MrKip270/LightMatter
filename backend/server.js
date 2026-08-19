@@ -51,7 +51,11 @@ app.use("/api/sky", skyRoute);
 
 // 7. Serve the frontend folder as static files. Anything not matched by an
 //    API route above falls through to here (e.g. "/" -> index.html).
-app.use(express.static(path.join(__dirname, "..", "frontend")));
+app.use(
+  express.static(path.join(__dirname, "..", "frontend"), {
+    extensions: ["html"],
+  })
+);
 
 // 8. Start listening for requests — but only when this file is run directly
 //    (`npm start`), not when a test require()s it to hit the real app on an

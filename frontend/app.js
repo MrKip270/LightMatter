@@ -106,7 +106,7 @@ function render(state = {}) {
         </svg>
         <span class="logo-word" translate="no">LightMatter</span>
       </a>
-      <a class="about-pill" href="/about.html">About</a>
+      <a class="about-pill" href="/about">About</a>
     </div>
 
     <aside class="info panel ${showInfo ? "open" : ""}" aria-live="polite" aria-label="Location summary">
