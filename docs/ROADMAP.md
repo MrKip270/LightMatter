@@ -99,14 +99,29 @@ supermoon is meaningfully brighter) and atmospheric extinction.
 magnitude optimistic for small towns ringed by wilderness (Tromsø). A finer grid,
 or a hybrid that keeps high resolution near populated areas, would fix it.
 
-**11b. Dark-site search can land in water.** `findNearestDarkSite` /
-`findNearestGoodWeatherDarkSite` (`backend/sources/darksite.js`) walk the light
-pollution grid outward and return the first cell that clears the SQM threshold
-— open ocean is unlit, so it clears trivially and the search has no concept of
-land vs. water to prefer instead. Coastal and island searches can recommend a
-point in the ocean, which is not a usable stargazing destination. Needs a land
-mask (or equivalent land/water check) folded into candidate selection, not just
-into the darkness threshold.
+**11b. ~~Dark-site search can land in water.~~ DONE for ocean/coastal, KNOWN
+LIMITATION for large inland water.** Both searches default to `landOnly: true`
+and reverse-geocode each candidate (via `reversegeocode.js`, the same
+Nominatim call already used to label a clicked point) before returning it,
+widening the candidate pool searched so there's a real pool to filter from.
+When every dark-enough/score-beating candidate turns out to be water, the
+response carries `reason: "no-land-match"` and the frontend prompts the user
+to click a spot on the map themselves rather than silently degrading.
+
+Confirmed working for open ocean: Nominatim returns no address at all there,
+so it's unambiguous. **Confirmed NOT working for large inland water** (Great
+Lakes, Caspian Sea, and similar): a Chicago "best nearby site" search landed
+squarely in Lake Michigan, labeled just `"Michigan, United States"` — Nominatim
+matched the enclosing *state* boundary polygon (`category: boundary, type:
+administrative, addresstype: state`), not a water feature, because OSM has no
+finer-grained polygon at that point. This is indistinguishable, using address
+fields alone, from a genuinely remote rural point that also only resolves to
+state/country with no locality — so tightening the heuristic to require a
+locality match would reject real remote dark-sky sites too. Properly fixing
+this needs an actual land/water dataset (e.g., Natural Earth's coastline +
+lakes polygons) checked directly against candidate coordinates, independent of
+Nominatim. Deferred — ocean was the far larger share of the original bug
+reports, and Great Lakes-adjacent misses are a much narrower miss surface.
 
 ---
 

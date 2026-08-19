@@ -21,7 +21,7 @@ function parseMinSqm(req, res) {
   return minSqm;
 }
 
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   const coords = validateCoordinates(req.query);
   if (coords.error) return res.status(400).json({ error: coords.error });
 
@@ -29,7 +29,7 @@ router.get("/", (req, res) => {
   if (minSqm === null) return;
 
   try {
-    res.json(findNearestDarkSite(coords.lat, coords.lon, minSqm));
+    res.json(await findNearestDarkSite(coords.lat, coords.lon, minSqm));
   } catch (err) {
     // 503 when the grid failed to load — that is our problem, not the
     // caller's, and it is fixed by running the build tool.

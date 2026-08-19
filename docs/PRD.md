@@ -136,3 +136,12 @@ the gathering and interpretation.
   somewhat brighter than reported. The response includes `dataYear` so the UI can
   say so. A 2024 recalculation (Lorenz) exists but publishes only rendered
   images; obtaining its numeric grid would require contacting the author.
+- **Dark-site search's land check misses large inland water.** The nearest-
+  dark-site search (`backend/sources/darksite.js`) filters candidates to land
+  by reverse-geocoding each one — Nominatim returns no address at all for open
+  ocean, which is unambiguous. It does **not** reliably catch big lakes: a
+  point in the middle of Lake Michigan reverse-geocodes to just
+  `"Michigan, United States"` (Nominatim matches the enclosing state boundary,
+  since OSM has no finer polygon there), which is indistinguishable from a
+  genuinely remote rural land point using address fields alone. See
+  `docs/ROADMAP.md` tier 4 item 11b.

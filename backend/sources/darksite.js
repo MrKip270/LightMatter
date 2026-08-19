@@ -32,6 +32,7 @@ const { grid, meta, loadError } = require("./lightpollutiongrid");
 const { getLightPollution } = require("./lightpollution");
 const { getClouds } = require("./clouds");
 const { darknessFactor, scoreTonight } = require("./scoring");
+const { reverseGeocode } = require("./reversegeocode");
 
 const KM_PER_DEGREE = 111; // matches the constant already used for resolutionKm
 const EARTH_RADIUS_KM = 6371;
@@ -44,6 +45,30 @@ const MAX_SEARCH_RADIUS_KM = 1500; // generous; nowhere on the grid should need 
 // comfortably spans a handful of genuinely different weather cells at the
 // grid's ~7km spacing without excessive fan-out.
 const DEFAULT_WEATHER_CANDIDATES = 8;
+
+// The World Atlas grid has real cells over open ocean too — near-zero light
+// pollution reads as an excellent "dark site" even though nobody can stand
+// there. Both searches default to land-only, which widens the candidate pool
+// they draw from (a single nearest-dark-cell is often water near any coast)
+// and then walks that pool nearest-first, verifying each with reverse
+// geocoding until one resolves to an actual place.
+const DEFAULT_LAND_CANDIDATES = 12;
+
+// Land is verified the same way the UI already labels a clicked point:
+// reverse geocoding. Nominatim returns no address for open ocean and most of
+// Antarctica (see reversegeocode.js's buildLabel), which is exactly the
+// "can't stand here" signal this needs — no separate land/water dataset
+// required. A lookup failure (Nominatim unreachable) is treated as
+// unverified-but-allowed, matching this codebase's rule that a naming
+// failure must never block a real feature (see routes/reversegeocode.js).
+async function isLand(lat, lon) {
+  try {
+    const result = await reverseGeocode(lat, lon);
+    return result.dataAvailable;
+  } catch {
+    return true;
+  }
+}
 
 function toRad(deg) {
   return (deg * Math.PI) / 180;
@@ -183,11 +208,11 @@ function searchCandidates(lat, lon, minSqm, count, qualifies = () => true) {
   return { outsideExtent: false, candidates };
 }
 
-function findNearestDarkSite(
+async function findNearestDarkSite(
   lat,
   lon,
   minSqm = DEFAULT_MIN_SQM,
-  { lookupOrigin = getLightPollution } = {}
+  { lookupOrigin = getLightPollution, landOnly = true, checkLand = isLand } = {}
 ) {
   if (loadError) {
     const err = new Error(loadError);
@@ -212,7 +237,13 @@ function findNearestDarkSite(
     ? (sqm) => darknessFactor(sqm) > darknessFactor(originSqm)
     : () => true;
 
-  const search = searchCandidates(lat, lon, minSqm, 1, qualifies);
+  const search = searchCandidates(
+    lat,
+    lon,
+    minSqm,
+    landOnly ? DEFAULT_LAND_CANDIDATES : 1,
+    qualifies
+  );
 
   if (search.outsideExtent) {
     return {
@@ -223,18 +254,38 @@ function findNearestDarkSite(
     };
   }
 
-  const best = search.candidates[0];
+  // Nearest-first, so the first one that verifies as land IS the nearest
+  // qualifying land site — same reasoning as the tonight search below.
+  let best = null;
+  let landCandidatesChecked = 0;
+  if (landOnly) {
+    for (const candidate of search.candidates) {
+      landCandidatesChecked++;
+      if (await checkLand(candidate.lat, candidate.lon)) {
+        best = candidate;
+        break;
+      }
+    }
+  } else {
+    best = search.candidates[0] ?? null;
+  }
+
   if (!best) {
+    const foundOnlyWater = landOnly && search.candidates.length > 0;
     return {
       query,
       minSqm,
       dataAvailable: true,
       found: false,
+      landOnly,
+      reason: foundOnlyWater ? "no-land-match" : undefined,
       originSqm,
       originDataAvailable,
-      message: originDataAvailable
-        ? `Nothing within ${MAX_SEARCH_RADIUS_KM} km is both above ${minSqm} mag/arcsec² and darker than here.`
-        : `No cell within ${MAX_SEARCH_RADIUS_KM} km reaches ${minSqm} mag/arcsec².`,
+      message: foundOnlyWater
+        ? `Found ${search.candidates.length} dark-enough site${search.candidates.length === 1 ? "" : "s"} nearby, but none of them are on land — try picking a spot on land yourself.`
+        : originDataAvailable
+          ? `Nothing within ${MAX_SEARCH_RADIUS_KM} km is both above ${minSqm} mag/arcsec² and darker than here.`
+          : `No cell within ${MAX_SEARCH_RADIUS_KM} km reaches ${minSqm} mag/arcsec².`,
     };
   }
 
@@ -243,6 +294,7 @@ function findNearestDarkSite(
     minSqm,
     dataAvailable: true,
     found: true,
+    landOnly,
     originSqm,
     originDataAvailable,
     distanceKm: Number(best.distanceKm.toFixed(1)),
@@ -270,6 +322,8 @@ async function findNearestGoodWeatherDarkSite(
     candidateCount = DEFAULT_WEATHER_CANDIDATES,
     fetchWeather = getClouds,
     lookupOrigin = getLightPollution,
+    landOnly = true,
+    checkLand = isLand,
   } = {}
 ) {
   if (loadError) {
@@ -329,20 +383,44 @@ async function findNearestGoodWeatherDarkSite(
   // origin's own score couldn't be computed, there is nothing concrete to
   // beat, so any candidate with a real score qualifies — the same "degrade to
   // floor-only" posture findNearestDarkSite takes for the same reason.
-  const match = evaluated.find(
-    (c) => c.score !== null && (originScore === null || c.score > originScore)
-  );
+  const scoreBeatsOrigin = (c) =>
+    c.score !== null && (originScore === null || c.score > originScore);
+
+  // Land is checked sequentially, not batched into the weather Promise.allSettled
+  // above — reverseGeocode's own 1 req/sec throttle only serializes correctly
+  // for calls that await one at a time (see reversegeocode.js), and only
+  // score-qualifying candidates need checking at all, so most searches verify
+  // just the one nearest match.
+  let match = null;
+  let landCandidatesChecked = 0;
+  if (landOnly) {
+    for (const c of evaluated) {
+      if (!scoreBeatsOrigin(c)) continue;
+      landCandidatesChecked++;
+      if (await checkLand(c.candidate.lat, c.candidate.lon)) {
+        match = c;
+        break;
+      }
+    }
+  } else {
+    match = evaluated.find(scoreBeatsOrigin) ?? null;
+  }
 
   if (!match) {
+    const foundOnlyWater = landOnly && landCandidatesChecked > 0;
     return {
       query,
       minSqm,
       dataAvailable: true,
       found: false,
+      landOnly,
+      reason: foundOnlyWater ? "no-land-match" : undefined,
       candidatesChecked: evaluated.length,
       originScore,
       originScoreAvailable,
-      message: `No cell among the ${evaluated.length} nearest dark-enough sites scores better than here tonight.`,
+      message: foundOnlyWater
+        ? `Found ${landCandidatesChecked} site${landCandidatesChecked === 1 ? "" : "s"} with clear, dark skies tonight, but none of them are on land — try picking a spot on land yourself.`
+        : `No cell among the ${evaluated.length} nearest dark-enough sites scores better than here tonight.`,
     };
   }
 
@@ -353,6 +431,7 @@ async function findNearestGoodWeatherDarkSite(
     minSqm,
     dataAvailable: true,
     found: true,
+    landOnly,
     candidatesChecked: evaluated.length,
     distanceKm: Number(match.candidate.distanceKm.toFixed(1)),
     location,
@@ -369,6 +448,7 @@ module.exports = {
   findNearestGoodWeatherDarkSite,
   DEFAULT_MIN_SQM,
   DEFAULT_WEATHER_CANDIDATES,
+  DEFAULT_LAND_CANDIDATES,
   MAX_SEARCH_RADIUS_KM,
   helpers: {
     haversineKm,
@@ -376,5 +456,6 @@ module.exports = {
     rowColFor,
     kmPerRingStep,
     ringCells,
+    isLand,
   },
 };

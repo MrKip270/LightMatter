@@ -59,6 +59,20 @@ const NOAA_RESPONSE = {
 // Swap global fetch for a router over our canned responses, and hand back a
 // restore function. Node's built-in mock could do this too, but an explicit
 // swap makes the mechanism visible rather than magic.
+// Captured from a real Nominatim jsonv2 response, trimmed — same shape as
+// reversegeocode.test.js's CHICAGO fixture. darksite.js's land-only default
+// reverse-geocodes candidates, so any route test that reaches a real
+// candidate now touches Nominatim too, not just Open-Meteo/NOAA.
+const NOMINATIM_LAND_RESPONSE = {
+  address: {
+    city: "Chicago",
+    county: "Cook County",
+    state: "Illinois",
+    country: "United States",
+    country_code: "us",
+  },
+};
+
 function mockFetch({ failOpenMeteo = false, failNoaa = false } = {}) {
   const original = globalThis.fetch;
 
@@ -72,6 +86,9 @@ function mockFetch({ failOpenMeteo = false, failNoaa = false } = {}) {
     if (href.includes("swpc.noaa.gov")) {
       if (failNoaa) return { ok: false, status: 500 };
       return { ok: true, status: 200, json: async () => NOAA_RESPONSE };
+    }
+    if (href.includes("nominatim.openstreetmap.org")) {
+      return { ok: true, status: 200, json: async () => NOMINATIM_LAND_RESPONSE };
     }
     throw new Error(`unexpected fetch to ${href}`);
   };
@@ -368,14 +385,22 @@ test("darksite/tonight rejects a non-numeric minSqm the same way", { skip: !grid
 });
 
 test("darksite route returns a real nearest-site result for a lit city", { skip: !gridExists }, async () => {
-  const { status, body } = await callDarksite(
-    "",
-    "lat=41.8827&lon=-87.6233" // Chicago Loop — well-established test coordinate
-  );
-  assert.equal(status, 200);
-  assert.ok(body.found, "Chicago is reliably lit enough that a darker site exists nearby");
-  assert.ok(body.distanceKm > 0);
-  assert.equal(body.weather, undefined, "the plain search doesn't check weather — that's /tonight's job");
+  // Land-only search reverse-geocodes each candidate — mocked here for the
+  // same reason reversegeocode.test.js mocks it: real Nominatim calls are
+  // slow, throttled to 1/sec, and can get an IP banned.
+  const restore = mockFetch();
+  try {
+    const { status, body } = await callDarksite(
+      "",
+      "lat=41.8827&lon=-87.6233" // Chicago Loop — well-established test coordinate
+    );
+    assert.equal(status, 200);
+    assert.ok(body.found, "Chicago is reliably lit enough that a darker site exists nearby");
+    assert.ok(body.distanceKm > 0);
+    assert.equal(body.weather, undefined, "the plain search doesn't check weather — that's /tonight's job");
+  } finally {
+    restore();
+  }
 });
 
 test("darksite/tonight route returns a real result, weather-checked", { skip: !gridExists }, async () => {

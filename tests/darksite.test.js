@@ -23,6 +23,14 @@ const { darknessFactor } = require("../backend/sources/scoring");
 const { getLightPollution } = require("../backend/sources/lightpollution");
 const f = require("./helpers/fixtures");
 
+// findNearestDarkSite/findNearestGoodWeatherDarkSite default to landOnly:
+// true now, which verifies each candidate with reverseGeocode — a real
+// network call. Every test in this file is about the darkness/scoring
+// search logic, not land filtering (that has its own tests below), so they
+// all opt out via this shared option rather than repeating `landOnly: false`
+// with a slightly different spelling everywhere.
+const NO_LAND_CHECK = { landOnly: false };
+
 const GRID_PATH = path.join(__dirname, "..", "backend", "data", "lightpollution.bin");
 const gridExists = fs.existsSync(GRID_PATH);
 
@@ -70,10 +78,10 @@ test("ring cell count grows by 8 per radius, the ring perimeter", () => {
 
 test("a genuinely darker cell nearby is preferred over an identical-sqm one farther out", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   // Cherry Springs State Park is ~21.93 SQM. The real grid has a marginally
   // darker cell (21.94) 4.9km away — verified empirically, not assumed.
-  const result = findNearestDarkSite(41.6628, -77.8164);
+  const result = await findNearestDarkSite(41.6628, -77.8164, undefined, NO_LAND_CHECK);
   assert.equal(result.found, true);
   assert.equal(result.originDataAvailable, true);
   assert.equal(result.originSqm, 21.93);
@@ -83,11 +91,11 @@ test("a genuinely darker cell nearby is preferred over an identical-sqm one fart
   );
 });
 
-test("a light-polluted city finds a farther, genuinely darker site", { skip: !gridExists }, () => {
+test("a light-polluted city finds a farther, genuinely darker site", { skip: !gridExists }, async () => {
   // Chicago Loop is ~17.15 SQM — well under the 21.3 default, so the search
   // must travel to find a qualifying cell.
   const originSqm = getLightPollution(41.8827, -87.6233).sqm;
-  const result = findNearestDarkSite(41.8827, -87.6233);
+  const result = await findNearestDarkSite(41.8827, -87.6233, undefined, NO_LAND_CHECK);
   assert.equal(result.found, true);
   assert.equal(result.originSqm, originSqm);
   assert.ok(result.distanceKm > 10, `expected real travel, got ${result.distanceKm} km`);
@@ -103,7 +111,7 @@ test("a light-polluted city finds a farther, genuinely darker site", { skip: !gr
 
 test("REGRESSION: an origin that already clears the floor is never sent somewhere darker-sounding but worse", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   // This is the exact shape of the reported bug: a query point whose own sqm
   // (faked here to 21.5, comfortably above the 21.3 default floor) sits closer
   // to a cell that merely clears 21.3 (21.31, at 45.9km — confirmed via the
@@ -114,7 +122,7 @@ test("REGRESSION: an origin that already clears the floor is never sent somewher
   const fakeOriginSqm = 21.5;
   const lookupOrigin = () => ({ dataAvailable: true, sqm: fakeOriginSqm });
 
-  const result = findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin });
+  const result = await findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin, ...NO_LAND_CHECK });
 
   assert.equal(result.dataAvailable, true);
   if (result.found) {
@@ -125,8 +133,8 @@ test("REGRESSION: an origin that already clears the floor is never sent somewher
   }
 });
 
-test("outside the atlas extent returns no data, not an error", { skip: !gridExists }, () => {
-  const southPole = findNearestDarkSite(-89, 0);
+test("outside the atlas extent returns no data, not an error", { skip: !gridExists }, async () => {
+  const southPole = await findNearestDarkSite(-89, 0, undefined, NO_LAND_CHECK);
   assert.equal(southPole.dataAvailable, false);
   assert.equal(southPole.found, undefined);
 });
@@ -183,11 +191,11 @@ test("a ring search starting at row 0 genuinely produces out-of-bounds cells at 
   assert.ok(cells.some(([row]) => row >= 0), "and still include valid, in-bounds cells alongside them");
 });
 
-test("a threshold nothing can reach returns found: false, not a crash", { skip: !gridExists }, () => {
+test("a threshold nothing can reach returns found: false, not a crash", { skip: !gridExists }, async () => {
   // The natural sky ceiling is ~22.0 (see the mid-Pacific fixture in
   // lightpollution.test.js) — no real place reaches 25. This must degrade
   // gracefully within the search cap rather than scanning forever.
-  const result = findNearestDarkSite(39.9, 116.4, 25); // Beijing
+  const result = await findNearestDarkSite(39.9, 116.4, 25, NO_LAND_CHECK); // Beijing
   assert.equal(result.dataAvailable, true);
   assert.equal(result.found, false);
   assert.match(result.message, /25 mag\/arcsec/i);
@@ -195,26 +203,26 @@ test("a threshold nothing can reach returns found: false, not a crash", { skip: 
 
 test("the threshold is inclusive — a cell exactly at minSqm still qualifies", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   // Chicago's own sqm (~17.15) is far below any nearby qualifying cell, so
   // this isolates the FLOOR's <-vs-<= boundary from the origin-comparison
   // boundary (searching from an already-dark origin like Cherry Springs would
   // instead collide with the new "no strict improvement nearby" path).
-  const first = findNearestDarkSite(41.8827, -87.6233, 21.3);
-  const exact = findNearestDarkSite(41.8827, -87.6233, first.lightPollution.sqm);
+  const first = await findNearestDarkSite(41.8827, -87.6233, 21.3, NO_LAND_CHECK);
+  const exact = await findNearestDarkSite(41.8827, -87.6233, first.lightPollution.sqm, NO_LAND_CHECK);
   assert.equal(exact.found, true);
   assert.equal(exact.lightPollution.sqm, first.lightPollution.sqm);
 });
 
-test("every found result carries the same attribution as a direct lookup", { skip: !gridExists }, () => {
-  const result = findNearestDarkSite(41.8827, -87.6233);
+test("every found result carries the same attribution as a direct lookup", { skip: !gridExists }, async () => {
+  const result = await findNearestDarkSite(41.8827, -87.6233, undefined, NO_LAND_CHECK);
   assert.match(result.lightPollution.attribution, /Falchi/);
   assert.match(result.lightPollution.attribution, /CC BY-NC/);
 });
 
 test("an origin landing on a no-data pixel degrades to floor-only, flagged", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   // Simulates a query point sitting exactly on a real-but-missing grid pixel
   // (in bounds, but no reading) — a case getLightPollution's own dataAvailable
   // flag already covers, but one that's impractical to locate a real
@@ -222,9 +230,10 @@ test("an origin landing on a no-data pixel degrades to floor-only, flagged", {
   // established for the weather-aware search, applied to the origin lookup.
   const lookupOrigin = () => ({ dataAvailable: false, sqm: null });
 
-  const withNoOrigin = findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin });
-  const floorOnly = findNearestDarkSite(41.8827, -87.6233, 21.3, {
+  const withNoOrigin = await findNearestDarkSite(41.8827, -87.6233, 21.3, { lookupOrigin, ...NO_LAND_CHECK });
+  const floorOnly = await findNearestDarkSite(41.8827, -87.6233, 21.3, {
     lookupOrigin: () => ({ dataAvailable: false }),
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(withNoOrigin.originDataAvailable, false);
@@ -238,7 +247,7 @@ test("an origin landing on a no-data pixel degrades to floor-only, flagged", {
 
 test("raising the threshold never finds a closer (or equal-but-different) site", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   // The set of qualifying cells only shrinks as the threshold rises, so the
   // nearest one can only get farther away or disappear entirely (found: false).
   const points = [
@@ -252,7 +261,7 @@ test("raising the threshold never finds a closer (or equal-but-different) site",
   for (const [lat, lon] of points) {
     let previousDistance = -Infinity;
     for (const minSqm of thresholds) {
-      const result = findNearestDarkSite(lat, lon, minSqm);
+      const result = await findNearestDarkSite(lat, lon, minSqm, NO_LAND_CHECK);
       if (!result.found) continue;
       assert.ok(
         result.distanceKm >= previousDistance - 0.01, // tolerate float noise
@@ -265,7 +274,7 @@ test("raising the threshold never finds a closer (or equal-but-different) site",
 
 test("PROPERTY: a found result is always strictly darker than the query point itself", {
   skip: !gridExists,
-}, () => {
+}, async () => {
   const points = [
     [41.8827, -87.6233], // Chicago
     [51.5072, -0.1276], // London
@@ -278,7 +287,7 @@ test("PROPERTY: a found result is always strictly darker than the query point it
   for (const [lat, lon] of points) {
     const originSqm = getLightPollution(lat, lon).sqm;
     for (const minSqm of thresholds) {
-      const result = findNearestDarkSite(lat, lon, minSqm);
+      const result = await findNearestDarkSite(lat, lon, minSqm, NO_LAND_CHECK);
       if (!result.found) continue;
       assert.ok(
         darknessFactor(result.lightPollution.sqm) > darknessFactor(originSqm),
@@ -312,6 +321,7 @@ test("prefers the nearest candidate whose real score beats the origin's, skippin
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
     candidateCount: 8,
     fetchWeather,
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(result.found, true);
@@ -342,6 +352,7 @@ test("returns found:false when no candidate beats the origin's real score tonigh
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
     candidateCount: 5,
     fetchWeather,
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(result.found, false);
@@ -367,6 +378,7 @@ test("a candidate whose forecast fetch fails cannot win, but doesn't crash the b
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
     candidateCount: 5,
     fetchWeather,
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(result.found, true, "a later, genuinely-scoreable candidate still wins");
@@ -386,6 +398,7 @@ test("origin's own forecast failing falls back to any scoreable candidate, flagg
   const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
     candidateCount: 5,
     fetchWeather,
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(result.originScoreAvailable, false);
@@ -428,7 +441,7 @@ test("PIN: an exact tie in real tonight-score is not an improvement", { skip: !g
   // light pollution to that exact sqm and gives both identical weather — the
   // closest thing to a guaranteed tie the real grid can produce. A `>=`
   // instead of `>` bug would treat this as an improvement; it must not.
-  const nearest = findNearestDarkSite(41.8827, -87.6233, 21.3);
+  const nearest = await findNearestDarkSite(41.8827, -87.6233, 21.3, NO_LAND_CHECK);
   const tiedSqm = nearest.lightPollution.sqm;
   const lookupOrigin = () => ({ dataAvailable: true, sqm: tiedSqm });
   const clearNight = f.night(f.NEW_MOON_NIGHT, f.CLEAR);
@@ -438,6 +451,7 @@ test("PIN: an exact tie in real tonight-score is not an improvement", { skip: !g
     candidateCount: 1,
     fetchWeather,
     lookupOrigin,
+    ...NO_LAND_CHECK,
   });
 
   assert.equal(result.found, false, `a tied score must not count as an improvement, got score ${result.score}`);
@@ -481,6 +495,7 @@ test("PROPERTY: a found result always scores strictly better tonight than the or
     const result = await findNearestGoodWeatherDarkSite(lat, lon, 21.3, {
       candidateCount: 8,
       fetchWeather,
+      ...NO_LAND_CHECK,
     });
 
     if (!result.found) continue;
@@ -489,4 +504,112 @@ test("PROPERTY: a found result always scores strictly better tonight than the or
       `at (${lat}, ${lon}): winner's score ${result.score} must beat the origin's ${result.originScore}`
     );
   }
+});
+
+// --- Land-only filtering ----------------------------------------------------
+//
+// The real grid has cells over open ocean, which read as excellent "dark
+// sites" nobody can actually stand at. Both searches default to landOnly:
+// true, verifying each candidate with a `checkLand` seam (real implementation:
+// reverse geocoding — see isLand). These tests inject a fake checkLand so
+// they run with no network, exercising the selection logic the same way the
+// existing tests inject fetchWeather/lookupOrigin for the same reason.
+
+test("nearby search skips water candidates and picks the nearest land one", {
+  skip: !gridExists,
+}, async () => {
+  let calls = 0;
+  // The first two candidates checked (by distance) are "water"; the third is land.
+  const checkLand = async () => {
+    calls++;
+    return calls >= 3;
+  };
+
+  const result = await findNearestDarkSite(41.8827, -87.6233, 21.3, { checkLand });
+
+  assert.equal(result.found, true);
+  assert.equal(calls, 3, "must stop checking as soon as a land candidate is found");
+});
+
+test("nearby search reports no-land-match when every dark-enough candidate is water", {
+  skip: !gridExists,
+}, async () => {
+  const checkLand = async () => false;
+
+  const result = await findNearestDarkSite(41.8827, -87.6233, 21.3, { checkLand });
+
+  assert.equal(result.dataAvailable, true);
+  assert.equal(result.found, false);
+  assert.equal(result.reason, "no-land-match");
+  assert.match(result.message, /none of them are on land/i);
+});
+
+test("nearby search with landOnly:false never calls checkLand", { skip: !gridExists }, async () => {
+  let calls = 0;
+  const checkLand = async () => {
+    calls++;
+    return false;
+  };
+
+  const result = await findNearestDarkSite(41.8827, -87.6233, 21.3, {
+    checkLand,
+    landOnly: false,
+  });
+
+  assert.equal(result.found, true);
+  assert.equal(calls, 0);
+});
+
+test("tonight search skips water candidates and picks the nearest scoring, land one", {
+  skip: !gridExists,
+}, async () => {
+  // Every candidate scores better than the origin (a mediocre BROKEN night);
+  // only land-ness decides which one wins.
+  let originCall = true;
+  const fetchWeather = async () => {
+    if (originCall) {
+      originCall = false;
+      return f.night(f.NEW_MOON_NIGHT, f.BROKEN);
+    }
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR);
+  };
+
+  let landChecks = 0;
+  const checkLand = async () => {
+    landChecks++;
+    return landChecks >= 2; // first scoring candidate is water, second is land
+  };
+
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 5,
+    fetchWeather,
+    checkLand,
+  });
+
+  assert.equal(result.found, true);
+  assert.equal(landChecks, 2);
+});
+
+test("tonight search reports no-land-match when every improving candidate is water", {
+  skip: !gridExists,
+}, async () => {
+  let originCall = true;
+  const fetchWeather = async () => {
+    if (originCall) {
+      originCall = false;
+      return f.night(f.NEW_MOON_NIGHT, f.BROKEN);
+    }
+    return f.night(f.NEW_MOON_NIGHT, f.CLEAR);
+  };
+  const checkLand = async () => false;
+
+  const result = await findNearestGoodWeatherDarkSite(41.8827, -87.6233, 21.3, {
+    candidateCount: 5,
+    fetchWeather,
+    checkLand,
+  });
+
+  assert.equal(result.found, false);
+  assert.equal(result.reason, "no-land-match");
+  assert.match(result.message, /none of them are on land/i);
 });
