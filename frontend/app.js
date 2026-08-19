@@ -951,8 +951,20 @@ async function runDarkSiteSearch(mode) {
       // Leave darkSitePopupOpen as-is: the popup reopens to the two choices
       // rather than collapsing, so a retry with the other mode is one click.
       darkSiteSearch = null;
-      toast(data.message || "Couldn’t find a dark site near here.");
+      // render() BEFORE toast(): render() replaces ui.innerHTML wholesale,
+      // including the #toast element, so a toast() call before it gets wiped
+      // out immediately — it would set text on a node that's about to be
+      // discarded. toast() must run against the freshly rendered DOM.
       render({});
+      // "no-land-match" means every dark-enough candidate was open ocean —
+      // the map click handler already lets the user pick any point (see
+      // initMap), so the fix here is just telling them to use it, with more
+      // time on screen since it's a longer instruction than the usual toast.
+      if (data.reason === "no-land-match") {
+        toast(`${data.message} Click anywhere on the map to pick a spot.`, 7000);
+      } else {
+        toast(data.message || "Couldn’t find a dark site near here.");
+      }
       return;
     }
 
@@ -974,8 +986,8 @@ async function runDarkSiteSearch(mode) {
   } catch (err) {
     if (requestId !== darkSiteRequestId) return;
     darkSiteSearch = null;
+    render({}); // must precede toast() — see the found:false branch above
     toast(err.message || "Couldn’t reach the dark-site search.");
-    render({});
   }
 }
 
