@@ -1,6 +1,8 @@
 # LightMatter — Roadmap
 
-Last updated: 2026-08-17
+Last updated: 2026-08-20
+
+**Live:** [lightmatter.onrender.com](https://lightmatter.onrender.com)
 
 What's built, what's left, and what's optional. See [`PRD.md`](PRD.md) for the
 product spec and the reasoning behind decisions already made.
@@ -13,7 +15,7 @@ product spec and the reasoning behind decisions already made.
 | --- | --- | --- |
 | Geocoding + autocomplete | `/api/geocode` | Open-Meteo, name-match filtered |
 | Aurora probability | `/api/aurora` | NOAA SWPC OVATION |
-| Cloud cover | `/api/clouds` | Tonight's window, sunset→sunrise, best clear run |
+| Cloud cover | `/api/clouds` | WeatherAPI.com, tonight's window, sunset→sunrise, best clear run, 10-min server cache |
 | Light pollution | `/api/lightpollution` | Falchi 2015 atlas, 7 km grid, local |
 | Moon | `/api/moon` | Phase, altitude, rise/set, next new/full, lunar eclipses |
 | Reverse geocoding | `/api/reverse-geocode` | Nominatim proxy, throttled + cached |
@@ -25,6 +27,7 @@ product spec and the reasoning behind decisions already made.
 | Nearest dark site | `/api/darksite`, `/api/darksite/tonight` | Grid walk outward from the point; frontend popup offers "clear tonight" vs "dark regardless of forecast" |
 | Aurora overlay | `/api/aurora/tile/...` | Server-rendered PNG tiles from NOAA's OVATION grid, 5-min shared cache, opacity slider, legend |
 | Test suite | — | 226 tests (225 passed, 1 skipped), `npm test`, no dependencies, grouped-by-file output |
+| Deployment | — | Live on Render (`lightmatter.onrender.com`), free tier, `WEATHERAPI_KEY` set in the environment |
 
 ---
 
@@ -44,9 +47,14 @@ them. Node's built-in `node:test` needs no dependency.
 works, but the failure paths are only lightly exercised. Worth deliberately
 breaking each source and confirming the UI stays coherent.
 
-**3. Rate limiting / caching.** Every search hits Open-Meteo twice and NOAA once.
-Fine for one user; not fine if this is ever public. NOAA's OVATION grid updates
-every ~5 minutes and is global — cache one copy, not one per request.
+**3. Rate limiting / caching.** Partly done. Cloud cover moved from Open-Meteo
+Forecast to **WeatherAPI.com** (`WEATHERAPI_KEY` env var) and gained a 10-minute
+server-side cache (coordinates rounded to ~0.1°, ~11 km) — this is what actually
+forced the move: Render's shared free-tier outbound IP was getting 429s from
+other tenants' Open-Meteo traffic, not our own, so switching to a key-scoped
+quota fixed it at the root rather than just papering over it with a cache.
+NOAA's OVATION grid (aurora) was already cached with the same pattern. Still
+uncached: Open-Meteo Geocoding and Nominatim reverse-geocoding.
 
 ---
 
@@ -241,9 +249,14 @@ clamping — see `CLAUDE.md`'s current-state log). What's left, all P2/P3:
   - Aurora toggle is discoverable only after opening the layers rail, which
     is exactly the feature the aurora-chaser persona comes to the site for.
 
-**20. Deployment.** Nothing is deployed. The 23 MB grid loads into memory at
-startup, which rules out some serverless platforms and is worth knowing before
-picking a host.
+**20. ~~Deployment.~~ DONE — live on Render** at
+[lightmatter.onrender.com](https://lightmatter.onrender.com). The 23 MB grid
+loading into memory at startup ruled out some serverless platforms; Render's
+standard Node web service handles it fine. Free tier: the instance spins down
+after inactivity, so the first request after idle takes ~30s. Required moving
+cloud cover off Open-Meteo (see item 3) since Render's shared outbound IP was
+already rate-limited by other tenants' traffic before this app had any real
+usage of its own.
 
 **21. Remember last location.** PRD user story 14. `localStorage`, no backend.
 
@@ -266,9 +279,10 @@ social features.
 5. ~~Aurora overlay~~ (4.15c) — done
 6. ~~Accessibility~~ (5.19) — done
 7. ~~Hourly chart~~ (4.16) — done
-8. Dark-site search can land in water (3.11b) — coastal/island searches can currently recommend a point in the ocean
-9. Severe weather (2.4) — completes a PRD story, no key needed
-10. Planets via ephemeris (2.6) — biggest single upgrade to the report
-11. Caching (1.3) — before anyone else uses it
-12. Web Interface Guidelines audit (5.18 residual) — run `web-design-guidelines` now that the hourly chart / aurora overlay markup has settled
-13. Remaining Impeccable findings (5.19b) — small, mostly independent P2/P3 fixes; can be picked off individually
+8. ~~Dark-site search can land in water~~ (3.11b) — done for ocean/coastal; large inland water is a known remaining limitation
+9. ~~Deployment~~ (5.20) — done, live on Render
+10. ~~Caching~~ (1.3) — partly done; clouds moved to WeatherAPI.com + a 10-min cache (forced by the deploy above), NOAA aurora already cached; geocoding/reverse-geocoding still uncached
+11. Severe weather (2.4) — completes a PRD story, no key needed
+12. Planets via ephemeris (2.6) — biggest single upgrade to the report
+13. Web Interface Guidelines audit (5.18 residual) — run `web-design-guidelines` now that the hourly chart / aurora overlay markup has settled
+14. Remaining Impeccable findings (5.19b) — small, mostly independent P2/P3 fixes; can be picked off individually

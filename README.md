@@ -10,6 +10,10 @@ See [`docs/PRD.md`](docs/PRD.md) for the full product spec and
 [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's built, what's left, and what's
 optional.
 
+**Live:** [lightmatter.onrender.com](https://lightmatter.onrender.com) (Render
+free tier — the first request after idle can take ~30s to spin the instance
+back up).
+
 ## Status
 
 Early development, built step by step as a learning project. Working today:
@@ -26,11 +30,14 @@ Early development, built step by step as a learning project. Working today:
   slider in the layers rail, own colour key, and a forecast timestamp read
   from NOAA's own data — refetched every 5 minutes server-side, not polled by
   the browser.
-- **Cloud cover** — tonight's hourly cloud forecast from Open-Meteo, sliced to
-  the hours of **astronomical darkness** (sun ≥18° below the horizon), with
-  graceful fallback to sunset/sunrise at high latitudes. Reduced to a
-  plain-language verdict (Clear / Partly cloudy / Overcast). Reports both the
-  night's average and the longest unbroken clear stretch.
+- **Cloud cover** — tonight's hourly cloud forecast from WeatherAPI.com,
+  sliced to the hours of **astronomical darkness** (sun ≥18° below the
+  horizon), with graceful fallback to sunset/sunrise at high latitudes.
+  Reduced to a plain-language verdict (Clear / Partly cloudy / Overcast /
+  Clears overnight). Reports both the night's average and the longest
+  unbroken clear stretch. Server-side cached (10 min TTL, coordinates rounded
+  to ~11 km) so a page load and a dark-site ring search share fetches instead
+  of each issuing its own.
 - **Light pollution** — sky darkness for any coordinate, from a preprocessed
   copy of the Falchi et al. 2016 World Atlas. Reports SQM (magnitudes per square
   arc-second), a plain-language description, and the faintest star magnitude
@@ -155,14 +162,19 @@ server and no network.
 
 ## Running it
 
-Requirements: Node.js (v20+, for the test runner's custom-reporter support) and npm.
+Requirements: Node.js (v20+, for the test runner's custom-reporter support), npm,
+and a free [WeatherAPI.com](https://www.weatherapi.com/) API key (used for the
+cloud-cover forecast).
 
 ```bash
-npm install          # install dependencies (first time only)
-npm start            # start the server
+npm install                        # install dependencies (first time only)
+WEATHERAPI_KEY=<your-key> npm start  # start the server
 ```
 
-Then open **http://localhost:3000** in your browser.
+Then open **http://localhost:3000** in your browser. Without `WEATHERAPI_KEY`
+set, every other source still works — `/api/clouds` (and anything that depends
+on it, like `/api/sky`) degrades to a 502 for that section rather than the
+whole response failing.
 
 ## API routes
 
@@ -184,7 +196,8 @@ Then open **http://localhost:3000** in your browser.
   point: verdict, average cover, clearest hour, longest clear stretch, and the
   hour-by-hour detail. Responds `200` with `dataAvailable: false` when the
   forecast model has nothing for that point (distinct from a `502`, which means
-  the upstream request actually failed).
+  the upstream request actually failed, including a missing/invalid
+  `WEATHERAPI_KEY`).
 
 - `GET /api/moon?lat=<lat>&lon=<lon>[&date=YYYY-MM-DD]` — phase, illumination,
   altitude, rise/set, next new/full moon, and any upcoming lunar eclipse with
@@ -236,7 +249,11 @@ Chicago drifts 0.01 mag; Tromsø — a small city ringed by dark fjords — drif
 
 - **NOAA SWPC** — aurora / space weather (no key). *In use.*
 - **Open-Meteo Geocoding** — place name to coordinates (no key). *In use.*
-- **Open-Meteo Forecast** — hourly cloud cover, sunrise/sunset (no key). *In use.*
+- **WeatherAPI.com** — hourly cloud cover, sunrise/sunset (free key, set as
+  `WEATHERAPI_KEY`). *In use.* Replaced Open-Meteo Forecast, which rate-limits
+  by IP; Render's shared free-tier outbound IP was getting 429s from other
+  tenants' traffic. WeatherAPI ties its (much higher) quota to the key
+  instead, plus a 10-minute server-side cache.
 - **suncalc** — moon phase, position, rise/set, computed locally from Meeus'
   *Astronomical Algorithms*. No network, no key. *In use.*
 - **OpenStreetMap Nominatim** — reverse geocoding for the map picker (no key).
@@ -292,10 +309,14 @@ Full detail in [`docs/ROADMAP.md`](docs/ROADMAP.md). The short version:
    and forecast timestamp.
 5. ~~**Hourly timeline chart**~~ — done. Two stacked panels (cloud cover, effective
    sky darkness) sharing an hour axis, in `frontend/timelinechart.js`.
-6. **Dark-site search can land in water** — the grid walk has no land/water
-   check, so a coastal or island search can recommend a point in the ocean.
-7. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
+6. ~~**Dark-site search can land in water**~~ — done for ocean/coastal; large
+   inland water (Great Lakes-scale) is a known remaining limitation.
+7. ~~**Deployment**~~ — done. Live at
+   [lightmatter.onrender.com](https://lightmatter.onrender.com).
+8. **Severe weather alerts**, then **planets via a local ephemeris** — the latter
    would turn the static "bright planets" row into "Jupiter, southeast, 40° up".
-8. **Caching** — every search hits Open-Meteo twice and NOAA once.
+9. ~~**Caching**~~ — cloud forecasts are cached server-side (10 min TTL); NOAA's
+   aurora grid was already cached. Open-Meteo geocoding and Nominatim
+   reverse-geocoding remain uncached.
 
 Styling stays deliberately minimal until the remaining data sources land.
