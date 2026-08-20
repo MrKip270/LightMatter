@@ -152,7 +152,14 @@ const TARGETS = [
   },
   {
     name: "Major constellations",
-    minSqm: 18.5,
+    // Bortle's own official Class 9 description (the worst inner-city skies,
+    // republished by Frosty Drew Observatory) still reports the brightest
+    // constellation stars marginally visible there — NELM ~3.6, which the
+    // nakedEyeLimitingMagnitude formula above maps to ~SQM 17.5. Many fainter
+    // constellation figures are gone by then, but the brightest ones (Orion's
+    // belt, the Big Dipper) are not, so the gate sits at that floor rather
+    // than higher up.
+    minSqm: 17.5,
     detail: "The brighter stars that outline familiar patterns.",
   },
   {
@@ -193,7 +200,10 @@ function cloudFactor(clouds) {
 }
 
 // How dark the sky actually is tonight. Maps the useful part of the SQM range
-// (16 = inner city, 22 = pristine) onto 0-1.
+// (16 = inner city, 22 = pristine) onto 0-1. These bounds match the standard
+// inner-city/pristine-sky endpoints used across this codebase's other SQM
+// scales (describeSky's "Inner city" band starts below 17.5; the atlas's
+// darkest readings top out around 21.9-22).
 //
 // Takes an EFFECTIVE sqm — the site's baseline already adjusted for moonlight —
 // rather than the raw light pollution reading. That single change is what stops

@@ -31,6 +31,27 @@ test("naked-eye limiting magnitude matches known sky conditions", () => {
   close(h.nakedEyeLimitingMagnitude(17.15), 3.2, 0.3, "inner city");
 });
 
+test("nakedEyeLimitingMagnitude matches Schaefer (1990)'s NELM formula", () => {
+  // The code's formula was arrived at independently (cited to Unihedron via
+  // lightpollutionmap.info FAQ #31), but it is algebraically identical to
+  // Schaefer's peer-reviewed sky-brightness/NELM relation, solved for NELM:
+  //   NELM = 7.93 - 5*log10(10^((21.58 - sqm)/5) + 1)
+  // This test cross-checks against that independently-written form as a
+  // characterization test, not a bug fix — it should already pass.
+  function schaeferNelm(sqm) {
+    return 7.93 - 5 * Math.log10(Math.pow(10, (21.58 - sqm) / 5) + 1);
+  }
+
+  for (const sqm of [16, 17.15, 18.5, 19.5, 20.5, 21.3, 21.93, 22]) {
+    close(
+      h.nakedEyeLimitingMagnitude(sqm),
+      schaeferNelm(sqm),
+      0.01,
+      `SQM ${sqm} against Schaefer's formula`
+    );
+  }
+});
+
 test("limiting magnitude increases monotonically with darkness", () => {
   let previous = -Infinity;
   for (let sqm = 16; sqm <= 22; sqm += 0.25) {
@@ -128,6 +149,22 @@ test("visibility notes promise planets even in the worst skies", () => {
   // "Brightest planets", not "planets" — Uranus (+5.4) and Neptune (+7.8) are
   // not naked-eye objects under ANY sky.
   assert.match(innerCity, /brightest planets/i, "qualified, not blanket");
+});
+
+test("visibility notes agree with scoring.js's TARGETS about when constellations appear", () => {
+  // scoring.js's "Major constellations" target unlocks at SQM 17.5 (a Bortle-9
+  // floor reading). Below that threshold this text must not claim constellations
+  // are gone; below 17.5 it's fine to say so. Keeps the two surfaces — this
+  // prose and the TARGETS gate — from silently disagreeing with each other.
+  const justAboveGate = h.visibilityNote(17.6);
+  assert.doesNotMatch(
+    justAboveGate,
+    /few dozen stars/i,
+    "17.6 clears the constellation gate, so the bottom-tier phrasing must not apply"
+  );
+
+  const belowGate = h.visibilityNote(17.4);
+  assert.match(belowGate, /few dozen stars/i, "still below the constellation gate");
 });
 
 // --- Grid lookup ---------------------------------------------------------------

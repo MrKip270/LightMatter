@@ -19,7 +19,9 @@ const NATURAL_MCD = 0.171168465; // 22.00 mag/arcsec^2 in mcd/m^2
 
 // Naked-eye limiting magnitude: the faintest star visible from this sky.
 // More useful to a beginner than SQM, because it answers "how many stars".
-// Formula from Unihedron, via lightpollutionmap.info FAQ #31.
+// Formula from Unihedron, via lightpollutionmap.info FAQ #31 — confirmed
+// (tests/lightpollution.test.js) to be algebraically identical to Schaefer
+// (1990)'s peer-reviewed NELM/sky-brightness relation, solved for NELM.
 function nakedEyeLimitingMagnitude(sqm) {
   return 7.93 - 5 * Math.log10(Math.pow(10, 4.316 - sqm / 5) + 1);
 }
@@ -108,6 +110,11 @@ function visibilityNote(sqm) {
   if (sqm >= 20.5) return "Milky Way visible but washed out near the horizon.";
   if (sqm >= 19.5) return "Milky Way barely detectable; brighter constellations clear.";
   if (sqm >= 18.5) return "Milky Way not visible; only brighter stars stand out.";
+  // Matches scoring.js's "Major constellations" TARGETS gate (SQM 17.5, a
+  // Bortle-9-floor reading) — below 18.5 the Milky Way is long gone, but the
+  // brightest constellation patterns (Orion's belt, the Big Dipper) are still
+  // hanging on down to this floor.
+  if (sqm >= 17.5) return "Milky Way long gone, but the brightest constellations still outline.";
   return "Only the Moon, the brightest planets, and a few dozen stars are visible.";
 }
 

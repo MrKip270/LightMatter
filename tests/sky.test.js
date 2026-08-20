@@ -351,6 +351,18 @@ test("targets are gated by the sky brightness each one needs", () => {
   assert.equal(city["Major constellations"], "Not visible");
 });
 
+test("major constellations survive a Bortle-9-floor sky, not just brighter ones", () => {
+  // Bortle's own official Class 9 description (the worst inner-city skies)
+  // still reports the brightest constellation stars marginally visible
+  // (NELM ~3.6, which the codebase's own nakedEyeLimitingMagnitude formula
+  // maps to ~SQM 17.5) — even though many fainter constellation figures are
+  // gone. A sky just above that floor should not be gated to "Not visible".
+  const verdicts = Object.fromEntries(
+    h.targetVerdicts(f.night(f.NEW_MOON_NIGHT, f.CLEAR), 17.6).map((t) => [t.name, t.verdict])
+  );
+  assert.notEqual(verdicts["Major constellations"], "Not visible");
+});
+
 test("cloud cover caps every target regardless of how dark the site is", () => {
   const overcast = h.targetVerdicts(f.night(f.NEW_MOON_NIGHT, f.OVERCAST), 21.9);
   assert.ok(

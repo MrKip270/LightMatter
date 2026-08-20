@@ -17,8 +17,10 @@ const suncalc = require("suncalc");
 const eclipseData = require("../data/lunar-eclipses.json");
 
 // Sky brightness produced by a full moon at the zenith, in SQM. Published
-// values range roughly 17.8-19.5 depending on aerosols and airmass; 18.5 is a
-// reasonable middle. This is the single tuning constant of the washout model.
+// values range roughly 17.8-19.5 depending on aerosols and airmass (Sky &
+// Telescope cites ~18.0 mag/arcsec^2 overhead at full moon as a representative
+// figure); 18.5 sits within that range as a reasonable middle. This is the
+// single tuning constant of the washout model.
 const MOON_FULL_ZENITH_SQM = 18.5;
 
 // A moon this faint is treated as "effectively moonless" when hunting for a
