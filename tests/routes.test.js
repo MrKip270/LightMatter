@@ -31,29 +31,51 @@ test.beforeEach(() => {
 // Captured from the real APIs, trimmed. Using a real captured shape matters:
 // invented shapes test a parser against data the API never sends.
 
-const OPEN_METEO_RESPONSE = {
-  latitude: 41.879498,
-  longitude: -87.64974,
-  utc_offset_seconds: -18000,
-  timezone: "America/Chicago",
-  hourly_units: { time: "iso8601", cloud_cover: "%" },
-  hourly: {
-    time: [
-      ...Array.from({ length: 24 }, (_, i) => `2026-07-31T${String(i).padStart(2, "0")}:00`),
-      ...Array.from({ length: 24 }, (_, i) => `2026-08-01T${String(i).padStart(2, "0")}:00`),
-    ],
-    // Clear all night (hours 20-23 and 00-05), cloudy during the day.
-    cloud_cover: [
-      90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90,
-      90, 90, 90, 90, 90, 90, 90, 90, 5, 5, 5, 5,
-      5, 5, 5, 5, 5, 5, 90, 90, 90, 90, 90, 90,
-      90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90,
-    ],
+// One continuous clear stretch from 20:00 to 05:00, spanning midnight —
+// clear at the END of day 0 (hours 20-23) and the START of day 1 (hours
+// 0-5), cloudy everywhere else.
+const DAY0_CLOUD_COVER = [
+  90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90,
+  90, 90, 90, 90, 90, 90, 90, 90, 5, 5, 5, 5,
+];
+const DAY1_CLOUD_COVER = [
+  5, 5, 5, 5, 5, 5, 90, 90, 90, 90, 90, 90,
+  90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90,
+];
+
+function weatherApiHours(dateStr, cloudCoverByHour) {
+  return cloudCoverByHour.map((cloud, i) => ({
+    time: `${dateStr} ${String(i).padStart(2, "0")}:00`,
+    cloud,
+  }));
+}
+
+const WEATHERAPI_RESPONSE = {
+  location: {
+    name: "Chicago",
+    region: "Illinois",
+    country: "United States of America",
+    lat: 41.879498,
+    lon: -87.64974,
+    tz_id: "America/Chicago",
+    // Wall-clock noon on 2026-07-31 in America/Chicago (UTC-5 in July) is
+    // 17:00 UTC — matches computeUtcOffsetSeconds's -18000s expectation.
+    localtime_epoch: 1785517200,
+    localtime: "2026-07-31 12:00",
   },
-  daily: {
-    time: ["2026-07-31", "2026-08-01"],
-    sunrise: ["2026-07-31T05:43", "2026-08-01T05:44"],
-    sunset: ["2026-07-31T20:10", "2026-08-01T20:09"],
+  forecast: {
+    forecastday: [
+      {
+        date: "2026-07-31",
+        astro: { sunrise: "05:43 AM", sunset: "08:10 PM" },
+        hour: weatherApiHours("2026-07-31", DAY0_CLOUD_COVER),
+      },
+      {
+        date: "2026-08-01",
+        astro: { sunrise: "05:44 AM", sunset: "08:09 PM" },
+        hour: weatherApiHours("2026-08-01", DAY1_CLOUD_COVER),
+      },
+    ],
   },
 };
 
@@ -83,15 +105,20 @@ const NOMINATIM_LAND_RESPONSE = {
   },
 };
 
-function mockFetch({ failOpenMeteo = false, failNoaa = false } = {}) {
+// fetchClouds() throws immediately if this isn't set, before it ever reaches
+// fetch — every test in this file needs a value here even though the real
+// key is never used (fetch itself is mocked below).
+process.env.WEATHERAPI_KEY = "test-key";
+
+function mockFetch({ failWeatherApi = false, failNoaa = false } = {}) {
   const original = globalThis.fetch;
 
   globalThis.fetch = async (url) => {
     const href = String(url);
 
-    if (href.includes("open-meteo")) {
-      if (failOpenMeteo) return { ok: false, status: 503 };
-      return { ok: true, status: 200, json: async () => OPEN_METEO_RESPONSE };
+    if (href.includes("weatherapi.com")) {
+      if (failWeatherApi) return { ok: false, status: 503 };
+      return { ok: true, status: 200, json: async () => WEATHERAPI_RESPONSE };
     }
     if (href.includes("swpc.noaa.gov")) {
       if (failNoaa) return { ok: false, status: 500 };
@@ -207,7 +234,7 @@ test("clouds route returns a normalized payload from the canned forecast", async
     assert.ok(body.bestClearRun, "a usable window was found");
     assert.equal(body.bestClearRun.hours, 6);
 
-    // Open-Meteo snaps to its model grid; we report what it actually used.
+    // WeatherAPI snaps to its nearest station; we report what it actually used.
     assert.equal(body.location.used.lat, 41.879498);
     assert.equal(body.location.requested.lat, 41.88);
   } finally {
@@ -272,7 +299,7 @@ test("moon route accepts a future date", async () => {
 // --- Failure handling ------------------------------------------------------------
 
 test("an upstream outage becomes a 502, not a crash", async () => {
-  const restore = mockFetch({ failOpenMeteo: true });
+  const restore = mockFetch({ failWeatherApi: true });
   try {
     const { status, body } = await call(
       "/api/clouds",

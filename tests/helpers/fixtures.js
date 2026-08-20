@@ -40,7 +40,7 @@ function night(dateIso, cover, utcOffsetSeconds = -18000) {
   const usable = run.length >= cloudHelpers.MIN_USEFUL_RUN_HOURS;
 
   return {
-    source: "Open-Meteo forecast",
+    source: "WeatherAPI forecast",
     dataAvailable: true,
     location: {
       requested: { lat: 41.88, lon: -87.63 },

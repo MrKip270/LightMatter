@@ -4,7 +4,11 @@
 
 const suncalc = require("suncalc");
 
-const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
+// Switched from Open-Meteo to WeatherAPI.com — Open-Meteo rate-limits by IP,
+// and on Render that IP is shared with other tenants' traffic, so we were
+// getting 429s from load that wasn't ours. WeatherAPI ties its (much higher)
+// quota to WEATHERAPI_KEY instead, which fixes that at the root.
+const WEATHERAPI_URL = "https://api.weatherapi.com/v1/forecast.json";
 
 // --- Tuning knobs -----------------------------------------------------------
 // Deliberately harsher than the meteorological "okta" convention, because faint
@@ -63,6 +67,47 @@ function floorToHour(localIso) {
 function utcToLocalIso(utcDate, utcOffsetSeconds) {
   const localMs = utcDate.getTime() + utcOffsetSeconds * 1000;
   return new Date(localMs).toISOString().slice(0, 16);
+}
+
+// WeatherAPI's astro sunrise/sunset are 12-hour strings with no date ("06:26
+// AM"), unlike Open-Meteo's full ISO timestamps. Combines with the forecast
+// day's date to produce the same "YYYY-MM-DDTHH:MM" shape the rest of this
+// file (and scoring.js's localIsoToUtc, which does `Date.parse(iso + ":00Z")`
+// and therefore REQUIRES the "T" separator) already assumes everywhere.
+//
+// Returns null — rather than throwing — when the string doesn't match, which
+// is deliberately the same "no time available" signal Open-Meteo gives with
+// a null sunset/sunrise at true-polar latitudes. Not yet verified against a
+// real polar response (WeatherAPI's polar-day/night wording is unconfirmed),
+// but this keeps that case degrading instead of crashing if it turns up.
+function parseAstroTime(dateStr, timeStr) {
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec((timeStr ?? "").trim());
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const meridiem = match[3].toUpperCase();
+  if (meridiem === "PM" && hour !== 12) hour += 12;
+  if (meridiem === "AM" && hour === 12) hour = 0;
+
+  return `${dateStr}T${String(hour).padStart(2, "0")}:${minute}`;
+}
+
+// WeatherAPI has no raw utc_offset_seconds field (Open-Meteo did). Instead it
+// gives localtime_epoch (a real UTC instant, in seconds) alongside localtime
+// (the naive wall-clock string AT that instant) — so the offset is just the
+// difference between the two, treating localtime as if it were UTC.
+//
+// localtime is truncated to the minute, so the raw difference can be off by
+// up to 59 seconds. Real-world UTC offsets are always whole 15-minute
+// increments, so rounding to the nearest 900s cancels that noise out exactly.
+function computeUtcOffsetSeconds(localtime, localtimeEpoch) {
+  const [datePart, timePart] = localtime.split(" ");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  const localAsUtcMs = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const rawOffsetSeconds = Math.round((localAsUtcMs - localtimeEpoch * 1000) / 1000);
+  return Math.round(rawOffsetSeconds / 900) * 900;
 }
 
 // Pick the hourly entries inside [startIso, endIso], inclusive.
@@ -170,29 +215,50 @@ async function getClouds(lat, lon) {
 // --- The source --------------------------------------------------------------
 
 async function fetchClouds(lat, lon) {
+  const apiKey = process.env.WEATHERAPI_KEY;
+  if (!apiKey) {
+    throw new Error("WEATHERAPI_KEY is not configured");
+  }
+
   const params = new URLSearchParams({
-    latitude: String(lat),
-    longitude: String(lon),
-    hourly: "cloud_cover",
-    daily: "sunrise,sunset",
-    timezone: "auto", // makes every returned timestamp local to the location
-    forecast_days: "2", // tonight crosses midnight, so one day is not enough
+    key: apiKey,
+    q: `${lat},${lon}`,
+    days: "2", // tonight crosses midnight, so one day is not enough
+    aqi: "no",
+    alerts: "no",
   });
 
-  const response = await fetch(`${OPEN_METEO_URL}?${params}`);
+  const response = await fetch(`${WEATHERAPI_URL}?${params}`);
   if (!response.ok) {
-    throw new Error(`Open-Meteo responded with status ${response.status}`);
+    throw new Error(`WeatherAPI responded with status ${response.status}`);
   }
   const data = await response.json();
 
-  const sunsetToday = data.daily?.sunset?.[0] ?? null;
-  const sunriseTomorrow = data.daily?.sunrise?.[1] ?? null;
-  const utcOffset = data.utc_offset_seconds;
+  const [dayToday, dayTomorrow] = data.forecast.forecastday;
+  const utcOffset = computeUtcOffsetSeconds(
+    data.location.localtime,
+    data.location.localtime_epoch
+  );
+
+  const sunsetToday = parseAstroTime(dayToday.date, dayToday.astro?.sunset);
+  const sunriseTomorrow = dayTomorrow
+    ? parseAstroTime(dayTomorrow.date, dayTomorrow.astro?.sunrise)
+    : null;
 
   // Polar edge case. Above the Arctic circle and below the Antarctic one, the
-  // sun may not set or not rise, and Open-Meteo reports null. Tromsø - our own
-  // aurora default at 69.6N - is inside that zone, so this is a real path.
+  // sun may not set or not rise. Tromsø - our own aurora default at 69.6N -
+  // is inside that zone, so this is a real path.
   const isTruePolar = !sunsetToday || !sunriseTomorrow;
+
+  // WeatherAPI splits hourly data per calendar day instead of one flat
+  // 48-hour array like Open-Meteo, so we flatten it back into the same
+  // parallel time/cloud arrays the rest of this function expects. Each
+  // hour's "YYYY-MM-DD HH:MM" (space-separated) becomes "YYYY-MM-DDTHH:MM"
+  // to match every other local timestamp this file produces — see
+  // parseAstroTime's comment for why that separator is load-bearing.
+  const allHours = [...dayToday.hour, ...(dayTomorrow ? dayTomorrow.hour : [])];
+  const hourlyTimes = allHours.map((hour) => hour.time.replace(" ", "T"));
+  const hourlyCloudCover = allHours.map((hour) => hour.cloud);
 
   // Compute astronomical twilight bounds. The sun must be 18° below the horizon
   // before sky is genuinely dark — this can be 60–90 min after sunset depending
@@ -238,43 +304,38 @@ async function fetchClouds(lat, lon) {
   //      dips far enough for true astronomical night.
   //   3. First/last hourly entry — last resort for true polar (no sunset at all).
   const windowStart = isTruePolar
-    ? data.hourly.time[0]
+    ? hourlyTimes[0]
     : twilightStart
       ? floorToHour(twilightStart)
       : floorToHour(sunsetToday);
   const windowEnd = isTruePolar
-    ? data.hourly.time[23]
+    ? hourlyTimes[23]
     : twilightEnd
       ? floorToHour(twilightEnd)
       : floorToHour(sunriseTomorrow);
 
   const isPolarEdgeCase = isTruePolar || (!twilightStart && !twilightEnd);
 
-  const nightHours = selectHoursInWindow(
-    data.hourly.time,
-    data.hourly.cloud_cover,
-    windowStart,
-    windowEnd
-  );
+  const nightHours = selectHoursInWindow(hourlyTimes, hourlyCloudCover, windowStart, windowEnd);
 
   const average = averageCloudCover(nightHours);
 
   const location = {
     requested: { lat, lon },
-    // Open-Meteo snaps to its nearest model grid cell, so report what it
+    // WeatherAPI snaps to its nearest station/city, so report what it
     // actually used.
-    used: { lat: data.latitude, lon: data.longitude },
-    timezone: data.timezone,
+    used: { lat: data.location.lat, lon: data.location.lon },
+    timezone: data.location.tz_id,
     // Needed to turn our naive local timestamps back into real UTC instants,
     // which is what any astronomical calculation requires. The local strings
     // are perfect for comparing hours to each other, but useless to suncalc.
-    utcOffsetSeconds: data.utc_offset_seconds,
+    utcOffsetSeconds: utcOffset,
   };
 
   // The request worked but there is nothing to report. NOT an error.
   if (average === null) {
     return {
-      source: "Open-Meteo forecast",
+      source: "WeatherAPI forecast",
       dataAvailable: false,
       location,
       verdict: null,
@@ -297,7 +358,7 @@ async function fetchClouds(lat, lon) {
   const verdict = verdictWithUsableWindow(average, hasUsableWindow);
 
   return {
-    source: "Open-Meteo forecast",
+    source: "WeatherAPI forecast",
     dataAvailable: true,
     location,
     night: {
