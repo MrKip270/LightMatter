@@ -463,9 +463,13 @@ function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
     // unconditionally here was wrong: a full moon over a pristine site still
     // scores in the 70s, and the user deserves to know it would be better in
     // two weeks.
-    return moonPenalty >= 1.0
-      ? `Very good tonight — clear and dark, though the Moon is costing you about ${moonPenalty.toFixed(1)} magnitudes.`
-      : "Excellent conditions tonight — clear, dark, and no significant moonlight.";
+    if (moonPenalty >= 1.0) {
+      return `Very good tonight — clear and dark, though the Moon is costing you about ${moonPenalty.toFixed(1)} magnitudes.`;
+    }
+    if (limitedByHaze) {
+      return "Very good tonight, clear and dark, though some haze is taking the edge off.";
+    }
+    return "Excellent conditions tonight — clear, dark, and no significant moonlight.";
   }
   if (score >= 45) {
     if (limitedByCloud) return "Decent night, but cloud will cut into it.";
@@ -477,14 +481,14 @@ function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
   }
   if (score >= 20) {
     if (limitedByCloud) return "Poor viewing — cloud is the main problem tonight.";
-    if (limitedByHaze) return "Poor viewing — haze and low visibility are the main problem tonight.";
+    if (limitedByHaze) return "Poor viewing, haze and low visibility are the main problem tonight.";
     if (moonIsTheProblem) {
       return "Poor viewing — moonlight is washing out an otherwise dark sky.";
     }
     return "Poor viewing — the sky here is too bright for much beyond the basics.";
   }
   if (limitedByCloud) return "Not a night for it — cloud cover blocks nearly everything.";
-  if (limitedByHaze) return "Not a night for it — fog or haze blocks nearly everything.";
+  if (limitedByHaze) return "Not a night for it. Fog or haze blocks nearly everything.";
   return "Very limited — bright skies here leave only the Moon and brightest planets.";
 }
 

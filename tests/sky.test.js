@@ -423,6 +423,15 @@ test("a hazy but cloud-free night is blamed on haze, not cloud", () => {
   assert.match(r.headline, /haze/i, `got: ${r.headline}`);
 });
 
+test("mild haze on an otherwise excellent night is still named, not swallowed by the >=70 tier", () => {
+  const site = f.SITES.cherrySprings;
+  const mildHaze = f.night(f.NEW_MOON_NIGHT, f.CLEAR, undefined, new Array(10).fill(6.5));
+  const r = report(mildHaze, site.sqm, site);
+
+  assert.ok(r.score >= 70, `expected a >=70 score, got ${r.score}`);
+  assert.match(r.headline, /haze/i, `got: ${r.headline}`);
+});
+
 test("factors.visibility is present in the report and null when unmeasured", () => {
   const site = f.SITES.cherrySprings;
   const withVis = report(
