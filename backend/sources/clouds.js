@@ -124,9 +124,52 @@ function averageCloudCover(hours) {
   return Math.round(total / known.length);
 }
 
-// --- The source --------------------------------------------------------------
+// --- Cache --------------------------------------------------------------------
+// Open-Meteo rate-limits by IP, and on a host like Render that IP is shared
+// across many other apps' traffic — not just ours. Without a cache, every
+// page load (and every candidate darksite.js's ring search probes) is its
+// own fresh fetch, which is what tripped a 429 in production despite our own
+// traffic being light. Mirrors auroratiles.js's grid cache: same TTL
+// reasoning, same "cache the in-flight promise so concurrent callers share
+// one fetch" trick, same short cooldown on failure so a burst of requests
+// during an outage doesn't retry-storm Open-Meteo further.
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const FAILURE_COOLDOWN_MS = 30 * 1000;
+// ~11km at the equator. Coarse enough that a darksite ring search (many
+// points a few km apart) collapses onto one shared entry; fine enough that
+// forecasts still differ location to location. A cache hit still reports the
+// ORIGINAL cached call's `location.requested`, not the current caller's —
+// an accepted tradeoff for the same reason auroratiles.js caches by whole
+// grid rather than per exact point.
+const ROUND_DEGREES = 0.1;
+
+const cache = new Map(); // key -> { expiresAt, promise }
+
+function cacheKey(lat, lon) {
+  const rlat = (Math.round(lat / ROUND_DEGREES) * ROUND_DEGREES).toFixed(1);
+  const rlon = (Math.round(lon / ROUND_DEGREES) * ROUND_DEGREES).toFixed(1);
+  return `${rlat},${rlon}`;
+}
 
 async function getClouds(lat, lon) {
+  const key = cacheKey(lat, lon);
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise;
+  }
+
+  const promise = fetchClouds(lat, lon).catch((err) => {
+    cache.set(key, { promise, expiresAt: Date.now() + FAILURE_COOLDOWN_MS });
+    throw err;
+  });
+
+  cache.set(key, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
+  return promise;
+}
+
+// --- The source --------------------------------------------------------------
+
+async function fetchClouds(lat, lon) {
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lon),
@@ -294,5 +337,10 @@ module.exports = {
     CLEAR_MAX,
     PARTLY_MAX,
     MIN_USEFUL_RUN_HOURS,
+    // Test-only seam: clears the in-memory cache so tests don't leak state
+    // into each other. Never used by production code paths.
+    _resetCacheForTests() {
+      cache.clear();
+    },
   },
 };

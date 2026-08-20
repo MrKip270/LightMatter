@@ -14,8 +14,18 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
+const { helpers: cloudsHelpers } = require("../backend/sources/clouds");
+
 const GRID_PATH = path.join(__dirname, "..", "backend", "data", "lightpollution.bin");
 const gridExists = fs.existsSync(GRID_PATH);
+
+// clouds.js caches getClouds() results across calls (see its own comments for
+// why). Every test in this file mocks fetch and reuses the same lat/lon, so
+// without a reset each test after the first would see a previous test's
+// cached response instead of exercising its own mock.
+test.beforeEach(() => {
+  cloudsHelpers._resetCacheForTests();
+});
 
 // --- Canned upstream responses ------------------------------------------------
 // Captured from the real APIs, trimmed. Using a real captured shape matters:
