@@ -108,6 +108,18 @@ test("selectHoursInWindow picks an inclusive range across midnight", () => {
   assert.equal(picked[3].time, "2026-08-01T05:00", "end is inclusive");
 });
 
+test("selectHoursInWindow attaches visibilityKm alongside cloudCover, defaulting to null when omitted", () => {
+  const times = ["2026-07-31T20:00", "2026-07-31T21:00", "2026-07-31T22:00"];
+  const cover = [10, 20, 30];
+  const vis = [8, 4];
+
+  const withVis = h.selectHoursInWindow(times, cover, "2026-07-31T20:00", "2026-07-31T22:00", vis);
+  assert.deepEqual(withVis.map((h) => h.visibilityKm), [8, 4, null], "missing index falls back to null");
+
+  const withoutVis = h.selectHoursInWindow(times, cover, "2026-07-31T20:00", "2026-07-31T22:00");
+  assert.deepEqual(withoutVis.map((h) => h.visibilityKm), [null, null, null], "omitted array defaults every hour to null");
+});
+
 test("cloudVerdict boundaries land on the right side", () => {
   // Thresholds are where off-by-one bugs live, so test the exact edges rather
   // than comfortable values in the middle of each band.
@@ -219,4 +231,32 @@ test("averageCloudCover skips gaps instead of counting them as zero", () => {
   ];
   // Mean of 50 and 100 is 75. Counting the null as 0 would give 50.
   assert.equal(h.averageCloudCover(hours), 75);
+});
+
+test("averageVisibilityKm skips gaps instead of counting them as zero", () => {
+  const hours = [
+    { time: "t1", visibilityKm: 2 },
+    { time: "t2", visibilityKm: null },
+    { time: "t3", visibilityKm: 8 },
+  ];
+  // Mean of 2 and 8 is 5. Counting the null as 0 would give ~3.3.
+  assert.equal(h.averageVisibilityKm(hours), 5);
+});
+
+test("averageVisibilityKm returns null, not 0, when every hour is a gap", () => {
+  const allNull = [
+    { time: "t1", visibilityKm: null },
+    { time: "t2", visibilityKm: null },
+  ];
+  assert.equal(h.averageVisibilityKm(allNull), null);
+});
+
+test("averageVisibilityKm rounds to one decimal place", () => {
+  const hours = [
+    { time: "t1", visibilityKm: 3 },
+    { time: "t2", visibilityKm: 4 },
+    { time: "t3", visibilityKm: 4 },
+  ];
+  // Mean of 3, 4, 4 is 3.6666...
+  assert.equal(h.averageVisibilityKm(hours), 3.7);
 });

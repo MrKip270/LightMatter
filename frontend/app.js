@@ -407,6 +407,7 @@ function infoBody(state) {
     <p class="section-label">Conditions</p>
     <div class="readout mono">
       ${row("Cloud cover", formatCloud(d.sources?.clouds))}
+      ${row("Visibility", formatVisibility(d.sources?.clouds))}
       ${row("Sky brightness", d.sky.effectiveSqm ? `${d.sky.effectiveSqm} mag/arcsec²` : "—")}
       ${row("Moon", moon?.dataAvailable ? `${moon.phaseName} · ${moon.illuminatedFraction}% lit` : "—")}
     </div>

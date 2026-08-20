@@ -55,6 +55,17 @@ function formatCloud(clouds) {
   return `${clouds.averageCloudCover}% avg · ${clouds.verdict}`;
 }
 
+// Atmospheric visibility (fog/mist/haze) as a single readable phrase. Separate
+// from formatCloud because it's a separate physical cause — a night can be
+// 0% cloud and still hazed out, so this deserves its own row rather than
+// being folded into the cloud phrase.
+function formatVisibility(clouds) {
+  if (!clouds) return "—";
+  if (clouds.error) return "Unavailable — couldn’t reach the forecast";
+  if (!clouds.dataAvailable || clouds.averageVisibilityKm === null) return "—";
+  return `${clouds.averageVisibilityKm} km avg`;
+}
+
 // Upcoming eclipse as one line. Eclipses are reported as a dated fact about a
 // place, not drawn on the map — we hold eclipse TIMES, not ground tracks, so a
 // path would have to be invented.
@@ -65,5 +76,12 @@ function formatEclipse(eclipse) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { scoreBand, formatHour, formatCount, formatCloud, formatEclipse };
+  module.exports = {
+    scoreBand,
+    formatHour,
+    formatCount,
+    formatCloud,
+    formatVisibility,
+    formatEclipse,
+  };
 }

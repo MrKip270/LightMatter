@@ -20,10 +20,17 @@ const { helpers: cloudHelpers } = require("../../backend/sources/clouds");
 // Build a night of hourly cloud cover running 20:00 -> 05:00 local time,
 // deriving every summary field from the hourly data.
 //
-// `cover` is an array of 10 percentages, one per hour.
-function night(dateIso, cover, utcOffsetSeconds = -18000) {
+// `cover` is an array of 10 percentages, one per hour. `visKm`, if given, is
+// an array of 10 vis_km readings, one per hour — omit it entirely to leave
+// visibility unmeasured (visibilityFactor then returns null, and scoreFrom
+// treats that as neutral, so existing callers that don't care about
+// visibility don't have to supply it).
+function night(dateIso, cover, utcOffsetSeconds = -18000, visKm = null) {
   if (cover.length !== 10) {
     throw new Error("night() expects exactly 10 hourly values (20:00 -> 05:00)");
+  }
+  if (visKm !== null && visKm.length !== 10) {
+    throw new Error("night() expects exactly 10 visKm values (20:00 -> 05:00) when given");
   }
 
   const day = dateIso.slice(0, 8);
@@ -33,7 +40,11 @@ function night(dateIso, cover, utcOffsetSeconds = -18000) {
     .map((h) => `${dateIso}T${h}:00`)
     .concat(["00", "01", "02", "03", "04", "05"].map((h) => `${day}${nextDay}T${h}:00`));
 
-  const hourly = times.map((time, i) => ({ time, cloudCover: cover[i] }));
+  const hourly = times.map((time, i) => ({
+    time,
+    cloudCover: cover[i],
+    visibilityKm: visKm === null ? null : visKm[i],
+  }));
 
   // Derived, not asserted — same helpers the real source uses.
   const run = cloudHelpers.longestClearRun(hourly);
@@ -55,6 +66,7 @@ function night(dateIso, cover, utcOffsetSeconds = -18000) {
       polarEdgeCase: false,
     },
     averageCloudCover: cloudHelpers.averageCloudCover(hourly),
+    averageVisibilityKm: visKm === null ? null : cloudHelpers.averageVisibilityKm(hourly),
     bestClearRun: usable
       ? { hours: run.length, start: run.start, end: run.end }
       : null,

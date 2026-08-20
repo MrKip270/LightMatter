@@ -18,6 +18,14 @@ const CLEAR_MAX = 20; // 0-20%   -> good visibility
 const PARTLY_MAX = 70; // 21-70% -> reduced to very reduced visibility
 //                       71-100% -> low to no visibility
 
+// WeatherAPI's vis_km is atmospheric visibility distance (fog/haze/mist),
+// independent of cloud cover — a night can be 0% cloud and still hazed out.
+// 8km is near WeatherAPI's normal clear-night ceiling (full credit); 1km is
+// dense fog (zero credit). Linear ramp between, same shape as darknessFactor's
+// SQM ramp in scoring.js.
+const VISIBILITY_FULL_KM = 8;
+const VISIBILITY_ZERO_KM = 1;
+
 // A "usable" clear stretch has to be long enough to be worth going outside for.
 const MIN_USEFUL_RUN_HOURS = 2;
 
@@ -116,11 +124,15 @@ function computeUtcOffsetSeconds(localtime, localtimeEpoch) {
 // naive LOCAL string in a fixed layout, so plain string comparison sorts them
 // chronologically. We never construct a Date, and therefore never risk
 // JavaScript reinterpreting the location's local time as the SERVER's.
-function selectHoursInWindow(times, cloudCovers, startIso, endIso) {
+function selectHoursInWindow(times, cloudCovers, startIso, endIso, visibilityKm = []) {
   const hours = [];
   for (let i = 0; i < times.length; i++) {
     if (times[i] >= startIso && times[i] <= endIso) {
-      hours.push({ time: times[i], cloudCover: cloudCovers[i] });
+      hours.push({
+        time: times[i],
+        cloudCover: cloudCovers[i],
+        visibilityKm: visibilityKm[i] ?? null,
+      });
     }
   }
   return hours;
@@ -167,6 +179,16 @@ function averageCloudCover(hours) {
   if (known.length === 0) return null;
   const total = known.reduce((sum, hour) => sum + hour.cloudCover, 0);
   return Math.round(total / known.length);
+}
+
+// Km is already a linear unit (unlike magnitudes — see gotcha #1 in
+// CLAUDE.md), so a plain arithmetic mean is correct here, no flux conversion
+// needed. Hours with no reading are skipped rather than counted as zero.
+function averageVisibilityKm(hours) {
+  const known = hours.filter((hour) => hour.visibilityKm !== null);
+  if (known.length === 0) return null;
+  const total = known.reduce((sum, hour) => sum + hour.visibilityKm, 0);
+  return Math.round((total / known.length) * 10) / 10;
 }
 
 // --- Cache --------------------------------------------------------------------
@@ -259,6 +281,7 @@ async function fetchClouds(lat, lon) {
   const allHours = [...dayToday.hour, ...(dayTomorrow ? dayTomorrow.hour : [])];
   const hourlyTimes = allHours.map((hour) => hour.time.replace(" ", "T"));
   const hourlyCloudCover = allHours.map((hour) => hour.cloud);
+  const hourlyVisibilityKm = allHours.map((hour) => hour.vis_km ?? null);
 
   // Compute astronomical twilight bounds. The sun must be 18° below the horizon
   // before sky is genuinely dark — this can be 60–90 min after sunset depending
@@ -316,9 +339,16 @@ async function fetchClouds(lat, lon) {
 
   const isPolarEdgeCase = isTruePolar || (!twilightStart && !twilightEnd);
 
-  const nightHours = selectHoursInWindow(hourlyTimes, hourlyCloudCover, windowStart, windowEnd);
+  const nightHours = selectHoursInWindow(
+    hourlyTimes,
+    hourlyCloudCover,
+    windowStart,
+    windowEnd,
+    hourlyVisibilityKm
+  );
 
   const average = averageCloudCover(nightHours);
+  const averageVisibility = averageVisibilityKm(nightHours);
 
   const location = {
     requested: { lat, lon },
@@ -341,6 +371,7 @@ async function fetchClouds(lat, lon) {
       verdict: null,
       visibility: "No cloud data available for this location.",
       averageCloudCover: null,
+      averageVisibilityKm: null,
       clearestHour: null,
       bestClearRun: null,
       hourly: [],
@@ -374,6 +405,7 @@ async function fetchClouds(lat, lon) {
     verdict,
     visibility: visibilityNote(verdict),
     averageCloudCover: average,
+    averageVisibilityKm: averageVisibility,
     clearestHour: clearest
       ? { time: clearest.time, cloudCover: clearest.cloudCover }
       : null,
@@ -395,9 +427,12 @@ module.exports = {
     selectHoursInWindow,
     longestClearRun,
     averageCloudCover,
+    averageVisibilityKm,
     CLEAR_MAX,
     PARTLY_MAX,
     MIN_USEFUL_RUN_HOURS,
+    VISIBILITY_FULL_KM,
+    VISIBILITY_ZERO_KM,
     // Test-only seam: clears the in-memory cache so tests don't leak state
     // into each other. Never used by production code paths.
     _resetCacheForTests() {

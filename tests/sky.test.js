@@ -66,6 +66,21 @@ test("darknessFactor maps the useful SQM range onto 0-1", () => {
   assert.equal(h.darknessFactor(null), null);
 });
 
+test("visibilityFactor maps vis_km 1-8 onto 0-1", () => {
+  const withVis = (avg) => ({ dataAvailable: true, averageVisibilityKm: avg });
+  assert.equal(h.visibilityFactor(withVis(1)), 0, "floor: dense fog");
+  assert.equal(h.visibilityFactor(withVis(8)), 1, "ceiling: WeatherAPI's normal clear reading");
+  assert.equal(h.visibilityFactor(withVis(4.5)), 0.5, "midpoint");
+  assert.ok(h.visibilityFactor(withVis(0)) === 0, "clamped below");
+  assert.ok(h.visibilityFactor(withVis(10)) === 1, "clamped above");
+});
+
+test("visibilityFactor returns null, not a guess, when unmeasured", () => {
+  assert.equal(h.visibilityFactor(null), null);
+  assert.equal(h.visibilityFactor({ dataAvailable: false }), null);
+  assert.equal(h.visibilityFactor({ dataAvailable: true, averageVisibilityKm: null }), null);
+});
+
 // --- Scoring ------------------------------------------------------------------
 
 test("the score is MULTIPLICATIVE, so either factor can veto the night", () => {
@@ -98,6 +113,24 @@ test("score is null when a required input is missing", () => {
   // measurement. Better to say nothing.
   assert.equal(h.scoreFrom(null, 0.9), null);
   assert.equal(h.scoreFrom(0.9, null), null);
+});
+
+test("a missing visibility reading defaults to neutral, unlike cloud or darkness", () => {
+  // Omitting the 4th arg (existing callers, before this feature) must score
+  // identically to explicitly passing visibility=1 or visibility=null — none
+  // of them should veto the score the way a missing cloud/darkness reading does.
+  const omitted = h.scoreFrom(0.8, 0.7, 0);
+  const explicitNeutral = h.scoreFrom(0.8, 0.7, 0, 1);
+  const explicitNull = h.scoreFrom(0.8, 0.7, 0, null);
+  assert.equal(omitted, explicitNeutral);
+  assert.equal(omitted, explicitNull);
+});
+
+test("bad visibility drags the score down just like bad cloud or darkness", () => {
+  const clear = h.scoreFrom(0.9, 0.9, 0, 1);
+  const foggy = h.scoreFrom(0.9, 0.9, 0, 0);
+  assert.equal(foggy, 0, "zero visibility vetoes the score");
+  assert.ok(foggy < clear);
 });
 
 // --- Potential score ----------------------------------------------------------
@@ -374,6 +407,35 @@ test("star counts are consistent with the score's direction", () => {
 
   assert.ok(dark.stars.visibleTonight > city.stars.visibleTonight * 10, "orders apart");
   assert.ok(city.stars.visibleTonight > 0, "even a city shows some stars");
+});
+
+// --- Visibility (vis_km) integration -------------------------------------------
+
+test("a hazy but cloud-free night is blamed on haze, not cloud", () => {
+  // 0% cloud cover but dense fog: the headline and factors must name haze as
+  // the culprit, not cloud — the whole point of tracking vis_km separately.
+  const site = f.SITES.cherrySprings;
+  const hazy = f.night(f.NEW_MOON_NIGHT, f.CLEAR, undefined, new Array(10).fill(4.5));
+  const r = report(hazy, site.sqm, site);
+
+  assert.ok(r.factors.visibility < r.factors.cloud, "visibility is the worse factor");
+  assert.ok(r.factors.visibility < r.factors.darkness);
+  assert.match(r.headline, /haze/i, `got: ${r.headline}`);
+});
+
+test("factors.visibility is present in the report and null when unmeasured", () => {
+  const site = f.SITES.cherrySprings;
+  const withVis = report(
+    f.night(f.NEW_MOON_NIGHT, f.CLEAR, undefined, new Array(10).fill(8)),
+    site.sqm,
+    site
+  );
+  const withoutVis = report(f.night(f.NEW_MOON_NIGHT, f.CLEAR), site.sqm, site);
+
+  assert.equal(withVis.factors.visibility, 1, "full marks at 8km");
+  assert.equal(withoutVis.factors.visibility, null, "unmeasured, not a guess");
+  // An unmeasured visibility must not change the score versus perfect visibility.
+  assert.equal(withVis.score, withoutVis.score);
 });
 
 // --- Degradation ---------------------------------------------------------------

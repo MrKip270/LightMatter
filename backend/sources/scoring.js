@@ -48,6 +48,7 @@ function buildNightTimeline(clouds, lightPollution, lat, lon) {
     return {
       time: hour.time,
       cloudCover: hour.cloudCover,
+      visibilityKm: hour.visibilityKm,
       clear: hour.cloudCover !== null && hour.cloudCover <= cloudHelpers.CLEAR_MAX,
       moonAltitude: moon.altitudeNow,
       effectiveSqm: sqm === null ? null : Number(sqm.toFixed(2)),
@@ -202,6 +203,20 @@ function darknessFactor(sqm) {
   return clamp((sqm - 16) / (22 - 16), 0, 1);
 }
 
+// How much haze/fog/mist is cutting into the view, independent of cloud cover
+// — a night can be 0% cloud and still hazed out. Maps WeatherAPI's vis_km
+// (fog = 1, near WeatherAPI's normal ceiling = 8) onto 0-1, same shape as
+// darknessFactor's SQM ramp above.
+//
+// Returns null (not 0) when unavailable, which scoreFrom treats as neutral —
+// a missing visibility reading must not veto the score the way missing
+// cloud/darkness data does.
+function visibilityFactor(clouds) {
+  if (!clouds || !clouds.dataAvailable || clouds.averageVisibilityKm === null) return null;
+  const { VISIBILITY_ZERO_KM: lo, VISIBILITY_FULL_KM: hi } = cloudHelpers;
+  return clamp((clouds.averageVisibilityKm - lo) / (hi - lo), 0, 1);
+}
+
 // Score is MULTIPLICATIVE, not a weighted sum. That is the important modelling
 // choice here: a weighted average would let a pristine dark site score
 // respectably under solid overcast, because darkness would prop up the number.
@@ -217,11 +232,14 @@ function darknessFactor(sqm) {
 // score is not a separate formula — it is this one with perfect weather and no
 // moon substituted in. Writing it twice would let the two definitions drift
 // apart, and then "58 tonight out of 92 possible" would stop meaning anything.
-function scoreFrom(cloud, darkness, auroraProbability = 0) {
+function scoreFrom(cloud, darkness, auroraProbability = 0, visibility = 1) {
   // Without both, a number would be a guess dressed up as a measurement.
   if (cloud === null || darkness === null) return null;
 
-  const base = 100 * cloud * darkness;
+  // Unlike cloud/darkness, a missing visibility reading defaults to neutral
+  // (no penalty) rather than nulling the whole score — see visibilityFactor.
+  const vis = visibility === null ? 1 : visibility;
+  const base = 100 * cloud * darkness * vis;
   const auroraBonus = Math.min(20, auroraProbability / 5) * cloud;
 
   return Math.round(clamp(base + auroraBonus, 0, 100));
@@ -231,7 +249,8 @@ function computeScore(clouds, effectiveSky, aurora) {
   return scoreFrom(
     cloudFactor(clouds),
     darknessFactor(effectiveSky),
-    aurora?.dataAvailable ? aurora.auroraProbability : 0
+    aurora?.dataAvailable ? aurora.auroraProbability : 0,
+    visibilityFactor(clouds)
   );
 }
 
@@ -420,12 +439,24 @@ function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
 
   const cloud = cloudFactor(clouds);
   const darkness = darknessFactor(effectiveSky);
-  const limitedByCloud = cloud < darkness;
+  const visibility = visibilityFactor(clouds);
 
-  // Three possible culprits now, not two. The moon is called out separately
-  // because it is the only one that is guaranteed to fix itself on a known
-  // schedule — worth saying so.
-  const moonIsTheProblem = !limitedByCloud && moonPenalty >= 1.0;
+  // Three preconditions competing to be named as the limiting factor, plus
+  // the moon as a separate fourth culprit below. Visibility only enters the
+  // comparison when it was actually measured (see visibilityFactor's null
+  // return for "unavailable") — an unmeasured factor can't be the worst one.
+  const worstPrecondition =
+    visibility !== null && visibility < cloud && visibility < darkness
+      ? "visibility"
+      : cloud < darkness
+        ? "cloud"
+        : "darkness";
+  const limitedByCloud = worstPrecondition === "cloud";
+  const limitedByHaze = worstPrecondition === "visibility";
+
+  // The moon is called out separately because it is the only culprit that is
+  // guaranteed to fix itself on a known schedule — worth saying so.
+  const moonIsTheProblem = !limitedByCloud && !limitedByHaze && moonPenalty >= 1.0;
 
   if (score >= 70) {
     // Even a good night can be moon-limited. Saying "no significant moonlight"
@@ -438,6 +469,7 @@ function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
   }
   if (score >= 45) {
     if (limitedByCloud) return "Decent night, but cloud will cut into it.";
+    if (limitedByHaze) return "Decent night, but haze will cut into it.";
     if (moonIsTheProblem) {
       return `Clear tonight, but the Moon is adding ${moonPenalty.toFixed(1)} magnitudes of skyglow — this site is much better near new moon.`;
     }
@@ -445,14 +477,15 @@ function buildHeadline(score, clouds, effectiveSky, moonPenalty = 0) {
   }
   if (score >= 20) {
     if (limitedByCloud) return "Poor viewing — cloud is the main problem tonight.";
+    if (limitedByHaze) return "Poor viewing — haze and low visibility are the main problem tonight.";
     if (moonIsTheProblem) {
       return "Poor viewing — moonlight is washing out an otherwise dark sky.";
     }
     return "Poor viewing — the sky here is too bright for much beyond the basics.";
   }
-  return limitedByCloud
-    ? "Not a night for it — cloud cover blocks nearly everything."
-    : "Very limited — bright skies here leave only the Moon and brightest planets.";
+  if (limitedByCloud) return "Not a night for it — cloud cover blocks nearly everything.";
+  if (limitedByHaze) return "Not a night for it — fog or haze blocks nearly everything.";
+  return "Very limited — bright skies here leave only the Moon and brightest planets.";
 }
 
 // --- Assembly -----------------------------------------------------------------
@@ -499,6 +532,7 @@ function buildReport(clouds, lightPollution, aurora, moon, timeline) {
     factors: {
       cloud: cloudFactor(clouds),
       darkness: darknessFactor(effectiveSky),
+      visibility: visibilityFactor(clouds),
     },
   };
 }
@@ -506,6 +540,7 @@ function buildReport(clouds, lightPollution, aurora, moon, timeline) {
 module.exports = {
   cloudFactor,
   darknessFactor,
+  visibilityFactor,
   scoreFrom,
   computeScore,
   computePotentialScore,
